@@ -1,0 +1,22 @@
+# 构建产物
+dist/
+build/
+*.dylib
+*.deb
+*.o
+*.a
+*.dSYM/
+
+# deb 打包中间目录
+layout/Library/MobileSubstrate/DynamicLibraries/*.dylib
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# 日志
+*.log
+unmios.log
