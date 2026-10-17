@@ -1,0 +1,80 @@
+UNMiOS 非商业使用许可 1.0
+UNMiOS Non-Commercial License 1.0
+
+版权所有 (c) 2026 hzeroer · Copyright (c) 2026 hzeroer
+
+本项目仅供个人自用、学习与研究。允许非商业的使用、修改与分享，禁止任何商业用途。
+
+
+一、你可以做的
+
+1. 下载、安装、在本人的设备上使用本软件；
+2. 阅读、学习、修改源代码；
+3. 以非商业目的把本软件（含修改版）分享给他人，前提是遵守第二节。
+
+
+二、你必须做的
+
+1. 保留本许可文件，不得删除或修改其中的版权声明；
+2. 保留源代码与界面中的作者署名（hzeroer）、项目名（UNMiOS）与项目链接；
+3. 若你修改了本软件并对外分享，须以显著方式写明你做了哪些修改，
+   且不得暗示原作者为你修改后的版本背书；
+4. 你对外分享的修改版，必须同样以本许可发布。
+
+
+三、禁止商业用途
+
+未经作者事先书面许可，不得将本软件（含修改版、含其任何部分）用于商业目的，
+包括但不限于：
+
+1. 销售、出租、收费下载、付费激活、订阅制提供；
+2. 打包进任何收费产品或付费服务中分发；
+3. 在提供下载或分发的页面、渠道上投放广告，或以导流、流量、下载量等
+   方式直接或间接获利；
+4. 为他人提供有偿的安装、配置、维护服务；
+5. 用于训练商业模型，或并入闭源商业发行版；
+6. 以本软件为基础制作商业产品，无论是否修改。
+
+个人自用、学习研究、以及完全无营收的开源项目，不受本节限制。
+
+
+四、无担保与责任限制
+
+本软件按"现状"提供，不附带任何明示或默示的担保，包括但不限于对适销性、
+特定用途适用性与非侵权性的担保。在任何情况下，作者均不对因使用或无法使用
+本软件而产生的任何索赔、损害或其他责任负责，无论该责任源于合同、侵权
+还是其他原因。
+
+
+五、终止
+
+违反本许可任何条款的，本许可授予的权利立即自动终止。你应当立即停止使用，
+并删除本软件的全部副本。
+
+
+------------------------------------------------------------------
+English Summary (the Chinese text above is authoritative)
+
+Copyright (c) 2026 hzeroer.
+
+This software is for personal use, study and research only.
+
+You may: use it on your own devices, read and modify the source, and share it
+or your modified version for non-commercial purposes, provided you keep this
+license file intact, keep the author's name (hzeroer), the project name
+(UNMiOS) and the project link, state clearly what you changed, and release
+your modified version under this same license.
+
+You may not, without prior written permission: sell it or charge for it in any
+form; bundle it into any paid product or paid service; monetise its
+distribution through advertising or traffic; offer paid installation or
+support services based on it; use it to train commercial models; or build a
+commercial product on top of it, modified or not.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Any violation terminates the rights granted here immediately; you must stop
+using the software and delete all copies.
