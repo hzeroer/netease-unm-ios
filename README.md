@@ -1,6 +1,6 @@
 # UNMiOS — 网易云音乐 iOS 解灰插件（巨魔注入版）
 
-作者：**hzeroer**　·　iPhone 14 Pro Max / iOS 16.6 / 网易云 8.9.20 实测可用
+作者：**hzeroer**　·　iPhone 15 Pro / iOS 16.6 / 网易云 8.9.20 实测可用
 
 把变灰的歌换掉音源。**不需要外部服务器、不需要 CA 证书、不需要代理、不需要抓包。**
 
@@ -31,7 +31,7 @@
 
 | 项 | 值 |
 |---|---|
-| 设备 | iPhone 14 Pro Max（`iPhone15,3`，A16） |
+| 设备 | iPhone 15 Pro（`iPhone15,3`，A16） |
 | 系统 | **iOS 16.6（20G75）** |
 | 客户端 | **网易云音乐 8.9.20（build 3440）** |
 | 注入方式 | TrollFools（未越狱，巨魔） |
@@ -135,14 +135,34 @@ URL 路径里的 `20261017043804` 是服务器时间戳，和请求时刻**逐�
 
 | 音源 | 结果 |
 |---|---|
-| **咪咕** | ✅ 有录音室版（周杰伦《稻香》8.5MB mp3 / 24.9MB flac），匿名可取链 |
+| **波点** | ✅ **主用。**酷我镜像；付费曲也能取，见下一节 |
+| **咪咕** | ✅ **备用。**有录音室版（周杰伦《稻香》8.5MB mp3 / 24.9MB flac），匿名可取链 |
 | 酷我 | ❌ 部分歌只给「当前仅在酷我手机端播放」；还测到**两首不同的歌返回同一个文件** |
-| 波点 | ❌ 本质是酷我镜像，同样受限 |
 | 酷狗 | ❌ 付费曲返回 `The Resource Needs to be Paid` |
 | 第三方 ID 直取（`pyncmd`，走 GD Studio 的 API） | ⚠️ 从网易取，网易没有的歌（如周杰伦原版，实测 7 首全空）它也没有；另有 50 次 / 5 分钟调用上限 |
 | QQ 音乐 | ⚠️ `purl` 为空即无权限，付费曲需要**会员账号**的 cookie；没有可用账号验证 |
 
-以上除咪咕外**代码已全部删除**。
+### 波点为什么能放付费曲
+
+`bd-api.kuwo.cn` 判断「这首歌有没有解锁」**是按设备号（`devid`）存在服务端的**，不是按签名、也不是按账号。
+
+同一个 URL、同一个签名、同一台机器，相隔几分钟：
+
+```
+devid: 88637305104   -> code 200   拿到地址
+devid: 随机生成       -> code 20018 没有解锁付费歌曲
+```
+
+那个设备号曾经看过一次解锁广告，服务端就永久记住了它。所以插件里写死了一个已解锁的 `devid`（配置项 `bodianDevid`），失效时换一个即可。
+
+顺带排掉的几个错误方向，免得有人重走：
+
+- **广告解锁接口** `/api/service/advert/watch` 一直是 `439 sign invalid`——UNM 自己发也是 439，**它根本不靠这个接口**，取链照样成功。
+- **签名算法**是对的：`md5("kuwotest" + 查询串去符号后按字符排序 + 路径)`，用抓包得到的输入能复现 UNM 的 `sign`。
+- **请求头**（`accept` / `accept-language` / `devid` / `plat` …）不是门槛。
+- **码率**不影响：15 档全试，付费曲一律 20018。
+
+以上除波点、咪咕外**代码已全部删除**。
 
 ### 想加回别的源
 
@@ -291,7 +311,7 @@ export ARCHS="arm64"
 
 也感谢那些在论坛和 issue 里公开讨论网易云接口字段含义的人。
 
-—— 本项目最终只保留咪咕一个音源，其余实测后已移除，原因见上一节。
+—— 音源最终定为波点主用、咪咕备用，其余实测后已移除，原因见上一节。
 
 ---
 
@@ -304,7 +324,7 @@ src/
   UNMModelHook.h/.m  模型层接管：脱灰 + 投放地址（核心）
   UNMStore.h/.m      元数据 / 匹配 / 地址缓存
   UNMMatcher.h/.m    打分与版本家族判定
-  UNMProvider*.m     音源（当前只有 migu）
+  UNMProvider*.m     音源（bodian 主用，migu 备用）
   UNMValidate.h/.m   候选链接探测（拒绝"假直链"）
   UNMURLProtocol.m   拦截层（当前主要用于观测；本客户端用不上响应改写）
   UNMMenu.h/.m       悬浮球 / 摇一摇 / 面板 / 诊断
@@ -336,14 +356,14 @@ src/
 ## 版本
 
 ```
-dist/UNMiOS.dylib    526,512 bytes  arm64  Mach-O dylib v2.2.1
+dist/UNMiOS.dylib    570,624 bytes  arm64  Mach-O dylib v2.6.2
 dist/UNMiOS.deb      150,468 bytes
-sha256  8c1ffcf4a3896c3c67ed7e5b0d0a86485e02cd88e5d3fe70686329592bd2f5b1
+sha256  b514375e83a4d2f09e17b464e51e0a8c3ab51f221f98fa0ebf725225e0fcd575
 作者：hzeroer      包名：com.hzeroer.unmios
 只链接系统库：Foundation / UIKit / CoreGraphics / CoreFoundation / libobjc / libSystem
 substrate 引用数：0    未定义符号：0    -Wall 警告数：0    __interpose 段：0
 ```
 
 > 署名同时出现在：面板「状态 → 版本」行、启动日志
-> （`UNMiOS 2.2.1 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
+> （`UNMiOS 2.6.2 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
 > `Author` / `Maintainer` 字段（装包时在 Sileo/Zebra 里可见）、以及 `LICENSE` 的版权行。

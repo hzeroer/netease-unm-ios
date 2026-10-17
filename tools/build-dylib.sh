@@ -129,6 +129,13 @@ echo "==> verifying Mach-O"
 if command -v llvm-objdump >/dev/null 2>&1; then
     llvm-objdump --macho --dylibs-used "$OUT/UNMiOS.dylib" || true
 elif command -v file >/dev/null 2>&1; then
+    # The per-architecture slices are inputs to lipo, not shippable artefacts.
+    #
+    # They carry no code signature, and a user who picks one of them gets
+    # "no code signature found" from TrollFools with no clue why. Leaving them in
+    # dist/ is how that happens, so remove them once the merge is done.
+    rm -f "$OUT"/UNMiOS-*.dylib
+
     file "$OUT/UNMiOS.dylib"
 fi
 

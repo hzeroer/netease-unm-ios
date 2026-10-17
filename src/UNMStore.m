@@ -489,6 +489,23 @@ static BOOL UNMLooksLikeSongDict(NSDictionary *d) {
                     }
                 }
                 hit = [UNMMatcher best:compatible forTarget:meta threshold:0.30];
+
+                // The relaxed pass exists to forgive a title spelled differently. It
+                // must not forgive a different song: a candidate by the same artist
+                // with an unrelated title scores 0.34 on the artist weight alone, which
+                // is how 《小幸运》 came back as 《一二三》. Require the titles themselves
+                // to be at least loosely related.
+                if (hit) {
+                    double titleScore = [UNMMatcher titleSimilarity:hit withTarget:meta];
+                    if (titleScore < 0.45) {
+                        UNMLogI(@"[match] %@ 放宽后仍拒绝《%@》（标题 %.2f 太低）",
+                                key, hit.title ?: @"?", titleScore);
+                        [[UNMStats shared] addEvent:[NSString stringWithFormat:
+                            @"拒绝同歌手不同歌 %@ 《%@》 %.2f", key, hit.title ?: @"?", titleScore]];
+                        hit = nil;
+                    }
+                }
+
                 if (hit) {
                     UNMLogI(@"[match] %@ 无候选过阈值(%.2f)，同类放宽后取 %.2f《%@》",
                             key, cfg.matchThreshold, hit.score, hit.title ?: @"?");
@@ -504,15 +521,75 @@ static BOOL UNMLooksLikeSongDict(NSDictionary *d) {
             if (deadline - CFAbsoluteTimeGetCurrent() <= 0.3) break;
         }
 
+        // Try the best few candidates, not just the best one.
+        //
+        // A catalogue often lists the same song more than once: a paid entry first,
+        // a free one behind it. KuGou does exactly this with 《小幸运》 -- the top
+        // match answers status 2 ("buy it") while another entry for the same track
+        // hands over a URL. Stopping at the first match made a paid listing hide a
+        // free one.
         NSString *url = nil;
+        UNMCandidate *chosen = nil;
         if (hit) {
-            remaining = deadline - CFAbsoluteTimeGetCurrent();
-            perTry = MIN((double)cfg.lookupTimeoutMS / 1000.0, remaining);
-            if (perTry > 0.2) {
+            NSArray<UNMCandidate *> *ranked =
+                [UNMMatcher rankedCandidates:candidates forTarget:meta threshold:cfg.matchThreshold];
+            if (ranked.count == 0) ranked = @[ hit ];
+
+            NSUInteger limit = MIN(ranked.count, (NSUInteger)3);
+            for (NSUInteger i = 0; i < limit; i++) {
+                remaining = deadline - CFAbsoluteTimeGetCurrent();
+                perTry = MIN((double)cfg.lookupTimeoutMS / 1000.0, remaining);
+                if (perTry <= 0.2) break;
+
+                UNMCandidate *candidate = ranked[i];
+                NSString *attempt = nil;
                 @try {
-                    url = [provider resolveURL:hit timeout:perTry];
+                    attempt = [provider resolveURL:candidate timeout:perTry];
                 } @catch (NSException *e) {
                     UNMLogW(@"provider %@ resolve threw: %@", key, e.reason);
+                }
+                if (attempt.length) {
+                    url = attempt;
+                    chosen = candidate;
+                    if (i > 0) {
+                        UNMLogI(@"[match] %@ 第 %lu 个候选才可用《%@》", key,
+                                (unsigned long)(i + 1), candidate.title ?: @"?");
+                    }
+                    break;
+                }
+            }
+            if (chosen == nil) chosen = hit;
+        }
+
+        // Last resort: the exact recording is unavailable, so take another take.
+        //
+        // BoDian charges for the studio 《晴天》 but gives away the live one. With the
+        // variant filter doing its job, the strict pass finds nothing at all -- and
+        // silence is the only outcome unless a different take is allowed here, once,
+        // after everything else has failed.
+        if (url.length == 0 && candidates.count > 0 && cfg.rejectVariants) {
+            NSArray<UNMCandidate *> *relaxed =
+                [UNMMatcher relaxedCandidates:candidates forTarget:meta threshold:0.75];
+            NSUInteger limit = MIN(relaxed.count, (NSUInteger)3);
+            for (NSUInteger i = 0; i < limit; i++) {
+                remaining = deadline - CFAbsoluteTimeGetCurrent();
+                perTry = MIN((double)cfg.lookupTimeoutMS / 1000.0, remaining);
+                if (perTry <= 0.2) break;
+
+                UNMCandidate *candidate = relaxed[i];
+                NSString *attempt = nil;
+                @try {
+                    attempt = [provider resolveURL:candidate timeout:perTry];
+                } @catch (NSException *e) {
+                    UNMLogW(@"provider %@ resolve threw: %@", key, e.reason);
+                }
+                if (attempt.length) {
+                    url = attempt;
+                    chosen = candidate;
+                    UNMLogI(@"[match] %@ 原版不可用，退而使用《%@》", key, candidate.title ?: @"?");
+                    [[UNMStats shared] addEvent:[NSString stringWithFormat:
+                        @"降级到变体 %@ 《%@》", key, candidate.title ?: @"?"]];
+                    break;
                 }
             }
         }
@@ -520,13 +597,13 @@ static BOOL UNMLooksLikeSongDict(NSDictionary *d) {
         dispatch_semaphore_signal(_lookupLimit);
 
         if (url.length) {
-            [self saveMatch:hit forID:songID];
+            [self saveMatch:(chosen ?: hit) forID:songID];
             [[UNMStats shared] bumpResolveHit:key];
-            UNMLogI(@"解灰命中 id=%lld 《%@》 -> %@ (%.2f, %@)", songID, meta.name, key, hit.score, hit.title);
+            UNMLogI(@"解灰命中 id=%lld 《%@》 -> %@ (%.2f, %@)", songID, meta.name, key, (chosen ?: hit).score, (chosen ?: hit).title);
             // Also surfaced as an event: the log line above is invisible from the
             // diagnostics screen, which is where anyone actually looks.
             [[UNMStats shared] addEvent:[NSString stringWithFormat:
-                @"命中 %@ 《%@》/%@ (%.2f)", key, hit.title ?: @"?", hit.album ?: @"?", hit.score]];
+                @"命中 %@ 《%@》/%@ (%.2f)", key, (chosen ?: hit).title ?: @"?", (chosen ?: hit).album ?: @"?", (chosen ?: hit).score]];
             return url;
         }
         [[UNMStats shared] bumpResolveMiss:key];

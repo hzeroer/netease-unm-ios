@@ -241,6 +241,70 @@ static double UNMVariantPenalty(NSString *candidateTitle, NSString *candidateAlb
     return 0.45;
 }
 
++ (NSArray<UNMCandidate *> *)rankedCandidates:(NSArray<UNMCandidate *> *)candidates
+                                    forTarget:(UNMSongMeta *)meta
+                                    threshold:(double)threshold {
+    if (candidates.count == 0 || meta == nil) return @[];
+
+    BOOL strict = [UNMConfig shared].rejectVariants;
+    NSMutableArray<UNMCandidate *> *scored = [NSMutableArray array];
+
+    for (UNMCandidate *c in candidates) {
+        if (![c isKindOfClass:UNMCandidate.class]) continue;
+        if (c.title.length == 0 || c.mediaId.length == 0) continue;
+        if (strict && ![self isFamilyCompatible:c withTarget:meta]) continue;
+        if (strict && c.artist.length > 0 && meta.artists.count > 0) {
+            double artistScore = UNMArtistScore(UNMSplitArtists(c.artist), meta.artists);
+            if (artistScore < 0.45) continue;
+        }
+        c.score = [self scoreCandidate:c against:meta];
+        if (c.score >= threshold) [scored addObject:c];
+    }
+
+    [scored sortUsingComparator:^NSComparisonResult(UNMCandidate *a, UNMCandidate *b) {
+        if (a.score > b.score) return NSOrderedAscending;
+        if (a.score < b.score) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+    return scored;
+}
+
++ (NSArray<UNMCandidate *> *)relaxedCandidates:(NSArray<UNMCandidate *> *)candidates
+                                     forTarget:(UNMSongMeta *)meta
+                                     threshold:(double)threshold {
+    if (candidates.count == 0 || meta == nil) return @[];
+
+    NSMutableArray<UNMCandidate *> *scored = [NSMutableArray array];
+    for (UNMCandidate *c in candidates) {
+        if (![c isKindOfClass:UNMCandidate.class]) continue;
+        if (c.title.length == 0 || c.mediaId.length == 0) continue;
+
+        // The artist still has to agree: a cover by someone else is a different
+        // song, not a different take.
+        if (c.artist.length > 0 && meta.artists.count > 0) {
+            double artistScore = UNMArtistScore(UNMSplitArtists(c.artist), meta.artists);
+            if (artistScore < 0.45) continue;
+        }
+        double titleScore = [self titleSimilarity:c withTarget:meta];
+        if (titleScore < threshold) continue;
+
+        c.score = titleScore;
+        [scored addObject:c];
+    }
+
+    [scored sortUsingComparator:^NSComparisonResult(UNMCandidate *a, UNMCandidate *b) {
+        if (a.score > b.score) return NSOrderedAscending;
+        if (a.score < b.score) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+    return scored;
+}
+
++ (double)titleSimilarity:(UNMCandidate *)candidate withTarget:(UNMSongMeta *)meta {
+    if (candidate.title.length == 0 || meta.name.length == 0) return 0.0;
+    return UNMTitleScore(candidate.title, meta.name);
+}
+
 + (double)scoreCandidate:(UNMCandidate *)candidate against:(UNMSongMeta *)meta {
     if (!candidate || !meta) return 0.0;
 
@@ -326,6 +390,21 @@ static double UNMVariantPenalty(NSString *candidateTitle, NSString *candidateAlb
         if (strict && ![self isFamilyCompatible:c withTarget:meta]) {
             UNMLogD(@"[match] 跳过变体《%@》/%@", c.title ?: @"?", c.album ?: @"?");
             continue;
+        }
+
+        // Different artist: refuse outright.
+        //
+        // A cover of the right song scores ~0.69 on title alone (0.66 title + 0.34
+        // artist, artist near zero) and clears the threshold, which is how 田馥甄's
+        // 小幸运 was replaced by someone else's cover. Title match is not enough on
+        // its own; when both sides name an artist they have to agree.
+        if (strict && c.artist.length > 0 && meta.artists.count > 0) {
+            double artistScore = UNMArtistScore(UNMSplitArtists(c.artist), meta.artists);
+            if (artistScore < 0.45) {
+                UNMLogD(@"[match] 跳过不同歌手《%@》/%@ (%.2f)", c.title ?: @"?", c.artist,
+                        artistScore);
+                continue;
+            }
         }
 
         double s = [self scoreCandidate:c against:meta];

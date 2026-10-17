@@ -373,6 +373,7 @@ typedef NS_ENUM(NSInteger, UNMRowKind) {
             @[ @"discoveryMode",        @"发现模式（只观察 + 打调用栈）" ],
             @[ @"forceUnblock",         @"强制解灰（接管 App 自身的版权判定）" ],
             @[ @"rejectVariants",       @"严格拒绝变体版本（remix/live/伴奏不顶替原版）" ],
+            @[ @"onlyReplaceGrey",      @"只替换灰歌（不动有版权的歌和云盘）" ],
         ];
         for (NSArray *pair in keys) {
             UNMRow *row = [UNMRow new];
@@ -388,15 +389,21 @@ typedef NS_ENUM(NSInteger, UNMRowKind) {
     // -------- 音源
     UNMSection *providers = [UNMSection new];
     providers.title = @"音源";
-    // Only MiGu: it is the one source verified to serve the studio recordings, and
-    // it answers anonymously. The others were removed rather than left switched off
-    // because KuWo was observed returning the same file for different songs.
-    UNMRow *miguRow = [UNMRow new];
-    miguRow.kind = UNMRowDetail;
-    miguRow.title = @"咪咕";
-    miguRow.detail = @"唯一音源（匿名可用，含无损）";
-    [providers.rows addObject:miguRow];
-    providers.footer = @"已移除酷我 / 波点 / 酷狗 / QQ 与第三方音源。";
+    // Only two sources, both kept visible so it is obvious what is being tried.
+    //
+    // MiGu first: it has the studio recordings. KuGou second: it has what MiGu
+    // does not (华研's catalogue) and needs no cookie.
+    for (NSString *key in @[ @"bodian", @"migu" ]) {
+        UNMRow *row = [UNMRow new];
+        row.kind = UNMRowSwitch;
+        row.key = [@"provider." stringByAppendingString:key];
+        row.title = key;
+        row.detail = @{ @"migu"  : @"咪咕（匿名可用，含无损）",
+                        @"bodian" : @"波点（酷我镜像，免 cookie）",
+                        @"kugou" : @"酷狗（免 cookie，覆盖华研等）" }[key];
+        [providers.rows addObject:row];
+    }
+    providers.footer = @"按顺序尝试：波点 → 咪咕。两者都不限速、不需要账号。";
     [sections addObject:providers];
 
     // -------- 参数

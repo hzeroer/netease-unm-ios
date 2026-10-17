@@ -77,4 +77,11 @@ fi
 echo
 echo "==> artifacts"
 ls -l "$DIST"
-( cd "$DIST" && sha256sum UNMiOS.dylib > SHA256SUMS 2>/dev/null && cat SHA256SUMS ) || true
+( cd "$DIST" && # Only the signed, merged dylib may remain in dist/.
+#
+# The per-architecture slices are unsigned inputs to lipo. Leaving one behind is
+# how a user ends up feeding it to TrollFools and being told
+# "no code signature found" -- an error that says nothing about the real cause.
+rm -f "$DIST"/UNMiOS-*.dylib
+
+sha256sum UNMiOS.dylib > SHA256SUMS 2>/dev/null && cat SHA256SUMS ) || true

@@ -73,6 +73,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// on, because a wrong version is worse than silence.
 @property (nonatomic, readonly) BOOL rejectVariants;
 
+/// The device id sent to BoDian. KuWo unlocks paid tracks per device, server-side,
+/// so this has to be an id that has already watched the unlocking advert. See the
+/// provider for the measurement.
+@property (nonatomic, copy, readonly) NSString *bodianDevid;
+
+/// Substitute only songs the client itself considers unplayable.
+///
+/// The URL holder reads empty for every song on its first access, so replacing
+/// there also hijacked licensed tracks and cloud-drive uploads. Defaults to on.
+@property (nonatomic, readonly) BOOL onlyReplaceGrey;
+
 /// Where the config was actually loaded from (nil when defaults are in use).
 @property (nonatomic, readonly, copy, nullable) NSString *loadedFrom;
 /// Where a template config was written / should be edited.

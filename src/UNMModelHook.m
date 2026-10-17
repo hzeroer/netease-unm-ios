@@ -104,6 +104,40 @@ static BOOL UNMModelHookEnabled(void) {
     return cached;
 }
 
+// The song the client last asked about, and when.
+//
+// Some clients ask for a URL on an object that carries no song id (the iPad HD
+// build does). The song model is always read first, so the most recent id is a
+// usable stand-in -- but only for a few seconds, because the player may move on.
+static NSUInteger gExceptionCount = 0;
+static void UNMCountException(void) { gExceptionCount++; }
+static NSUInteger UNMExceptionCount(void) { return gExceptionCount; }
+
+static long long gAskedSongID = 0;
+static CFAbsoluteTime gAskedAt = 0;
+static NSLock *gAskedLock = nil;
+
+static void UNMNoteAskedSongID(NSString *songId) {
+    if (songId.length == 0) return;
+    long long value = songId.longLongValue;
+    if (value == 0) return;
+
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gAskedLock = [[NSLock alloc] init]; });
+    [gAskedLock lock];
+    gAskedSongID = value;
+    gAskedAt = CFAbsoluteTimeGetCurrent();
+    [gAskedLock unlock];
+}
+
+static long long UNMRecentAskedSongID(void) {
+    if (gAskedLock == nil) return 0;
+    [gAskedLock lock];
+    long long value = (CFAbsoluteTimeGetCurrent() - gAskedAt < 3.0) ? gAskedSongID : 0;
+    [gAskedLock unlock];
+    return value;
+}
+
 /// Calls through to the real implementation for this receiver. Returns NO/nil/0
 /// when the registry has nothing, which means the hook was entered for a class we
 /// never installed on -- in that case the caller must not invent a value.
@@ -343,6 +377,7 @@ static long long UNMHooked_PrivStatus(id self_, SEL _cmd) {
     if (!UNMModelHookEnabled()) return original;
 
     NSString *songId = UNMSongIdOfObject(self_);
+    UNMNoteAskedSongID(songId);
     if (songId.length) {
         SEL feeSel = NSSelectorFromString(@"fee");
         IMP feeIMP = UNMHookOriginalForReceiver(self_, feeSel);
@@ -450,7 +485,38 @@ UNM_BOOL_PREDICATE(Priv_canShare, YES)
 // These are the predicates the list and the player actually consult. Deliberately
 // absent: canPlayLocally, which would send the client looking for a file that does
 // not exist.
-UNM_BOOL_PREDICATE(SongCanPlayMusic, YES)
+static NSMutableDictionary<NSString *, NSNumber *> *gPlayable = nil;
+static NSLock *gPlayableLock = nil;
+
+/// Remember whether the client itself considered this song playable, before the
+/// tweak overrides that answer.
+static void UNMRecordOriginalPlayable(NSString *songId, BOOL playable) {
+    if (songId.length == 0) return;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ gPlayableLock = [[NSLock alloc] init]; });
+    [gPlayableLock lock];
+    if (gPlayable == nil) gPlayable = [NSMutableDictionary dictionary];
+    if (gPlayable.count > 2000) [gPlayable removeAllObjects];
+    gPlayable[songId] = @(playable);
+    [gPlayableLock unlock];
+}
+
+/// nil when the client never told us -- then substituting is allowed.
+static NSNumber *UNMOriginalPlayableForID(NSString *songId) {
+    if (gPlayableLock == nil || songId.length == 0) return nil;
+    [gPlayableLock lock];
+    NSNumber *value = gPlayable[songId];
+    [gPlayableLock unlock];
+    return value;
+}
+
+static IMP gOrig_SongCanPlayMusic = NULL;
+static BOOL UNMHooked_SongCanPlayMusic(id self_, SEL _cmd) {
+    BOOL original = UNMOriginalBool(self_, _cmd);
+    if (!UNMModelHookEnabled()) return original;
+    UNMRecordOriginalPlayable(UNMSongIdOfObject(self_), original);
+    return YES;
+}
 UNM_BOOL_PREDICATE(SongCanPlayOnline, YES)
 UNM_BOOL_PREDICATE(SongCanEnableMusic, YES)
 // Sharing is a separate permission from playback.
@@ -458,7 +524,10 @@ UNM_BOOL_PREDICATE(SongCanShareMusic, YES)
 
 static IMP gOrig_SongIsUnavailable = NULL;
 static BOOL UNMHooked_SongIsUnavailable(id self_, SEL _cmd) {
-    return UNMModelHookEnabled() ? NO : UNMOriginalBool(self_, _cmd);
+    BOOL original = UNMOriginalBool(self_, _cmd);
+    if (!UNMModelHookEnabled()) return original;
+    if (original) UNMRecordOriginalPlayable(UNMSongIdOfObject(self_), NO);
+    return NO;
 }
 
 static IMP gOrig_SongIsPlayOnly = NULL;
@@ -486,6 +555,7 @@ static id UNMHooked_SongPrivilege(id self_, SEL _cmd) {
         // path. That lookup was the bulk of the delay between tapping a song and
         // having a URL ready -- which is what made the first attempt fail.
         NSString *songId = UNMSongIdOfObject(self_);
+    UNMNoteAskedSongID(songId);
         long long value = songId.longLongValue;
         if (value != 0) {
             NSString *name = nil;
@@ -530,7 +600,13 @@ static id UNMHooked_SongPrivilege(id self_, SEL _cmd) {
     // A grey song frequently carries no privilege object at all, and a nil one
     // cannot be forced playable -- so one is synthesised on demand.
     UNMCountHook(UNMHookCtrPrivSynthesized);
-    return [UNMModelHook synthesizedPrivilegeForSong:self_];
+    @try {
+        return [UNMModelHook synthesizedPrivilegeForSong:self_];
+    } @catch (NSException *exception) {
+        UNMCountException();
+        UNMLogW(@"[model] 合成 privilege 失败：%@", exception.reason);
+        return nil;
+    }
 }
 
 /// Per-bitrate file entry. `_songFile`, `_lfile`, `_mfile`, `_hfile` and friends
@@ -555,6 +631,7 @@ static id UNMHooked_SongPlayUrlInfo(id self_, SEL _cmd) {
     id original = UNMOriginalObject(self_, _cmd);
 
     NSString *songId = UNMSongIdOfObject(self_);
+    UNMNoteAskedSongID(songId);
     if (songId.length) {
         UNMLastEnsure();
         [gLastLock lock];
@@ -576,7 +653,13 @@ static id UNMHooked_SongPlayUrlInfo(id self_, SEL _cmd) {
     }
 
     UNMCountHook(UNMHookCtrUrlInfoSynthesized);
-    return [UNMModelHook synthesizedUrlInfoForClassNamed:@"NMSongCacheUrlInfo" song:self_];
+    @try {
+        return [UNMModelHook synthesizedUrlInfoForClassNamed:@"NMSongCacheUrlInfo" song:self_];
+    } @catch (NSException *exception) {
+        UNMCountException();
+        UNMLogW(@"[model] 合成地址对象失败：%@", exception.reason);
+        return nil;
+    }
 }
 
 // MARK: - NMSongUrlInfo
@@ -587,6 +670,7 @@ static NSString *UNMHooked_UrlGet(id self_, SEL _cmd) {
 
     NSString *original = UNMOriginalObject(self_, _cmd);
     NSString *songId = UNMSongIdOfObject(self_);
+    UNMNoteAskedSongID(songId);
     if (songId.length) UNMLastBegin(songId);
 
     if (!UNMModelHookEnabled()) return original;
@@ -769,6 +853,55 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
 /// Hooks every zero-argument, object-returning getter whose name mentions "url"
 /// on the given class.
 ///
+/// Scan the runtime for classes that plausibly carry a play URL, and hook them too.
+///
+/// The three names above are from the iPhone client. The iPad HD build is a
+/// separate app with its own model layer: un-greying works there (the privilege
+/// class kept its name) but playback fails, which means the player reads the URL
+/// from an object this tweak never touched. Instead of chasing names, look for
+/// classes whose name suggests a URL holder and hook every object getter that
+/// mentions "url" -- the same conservative rule used above, applied broadly.
++ (void)installDiscoveredURLGetters:(NSMutableArray<NSString *> *)report {
+    int capacity = objc_getClassList(NULL, 0);
+    if (capacity <= 0) return;
+
+    Class *classes = (Class *)malloc(sizeof(Class) * (size_t)capacity);
+    if (classes == NULL) return;
+    capacity = objc_getClassList(classes, capacity);
+
+    NSArray<NSString *> *patterns = @[ @"UrlInfo", @"SongUrl", @"PlayUrl",
+                                      @"PlayInfo", @"MediaSource", @"SourceInfo" ];
+    NSArray<NSString *> *already = @[ @"NMSongUrlInfo", @"NMSongCacheUrlInfo", @"NMSongFile" ];
+    NSMutableArray<NSString *> *hooked = [NSMutableArray array];
+
+    for (int i = 0; i < capacity; i++) {
+        Class cls = classes[i];
+        NSString *name = NSStringFromClass(cls);
+        if (name.length == 0 || name.length > 40) continue;
+        if (![name hasPrefix:@"NM"]) continue;          // NetEase's own classes only
+        if ([already containsObject:name]) continue;
+
+        BOOL matches = NO;
+        for (NSString *pattern in patterns) {
+            if ([name rangeOfString:pattern].location != NSNotFound) { matches = YES; break; }
+        }
+        if (!matches) continue;
+
+        NSMutableArray<NSString *> *probe = [NSMutableArray array];
+        [self installGenericURLGettersOnClassName:name report:probe];
+        NSString *line = probe.firstObject;
+        if (line.length && [line rangeOfString:@"(没有可接管的)"].location == NSNotFound) {
+            [hooked addObject:name];
+        }
+    }
+    free(classes);
+
+    [report addObject:hooked.count
+        ? [NSString stringWithFormat:@"额外接管 %lu 个地址类: %@", (unsigned long)hooked.count,
+                                     [hooked componentsJoinedByString:@", "]]
+        : @"未发现额外的地址类"];
+}
+
 /// The player may read the URL from NMSongCacheUrlInfo or NMSongFile rather than
 /// from NMSongUrlInfo, and their exact member lists are not known ahead of time.
 /// Restricting to zero-arg getters that return an object keeps this to real
@@ -876,6 +1009,7 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
         [self installGenericURLGettersOnClassName:@"NMSongUrlInfo" report:report];
         [self installGenericURLGettersOnClassName:@"NMSongCacheUrlInfo" report:report];
         [self installGenericURLGettersOnClassName:@"NMSongFile" report:report];
+        [self installDiscoveredURLGetters:report];
 
         UNMLogI(@"[model] 模型层 hook 安装完成");
         for (NSString *line in report) UNMLogI(@"[model]   %@", line);
@@ -988,7 +1122,8 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
             @"NMSongUrlInfo.url 读取次数：      %d（其中原本为空 %d）\n"
             @"其他模型类的 URL 取值器：         %d\n"
             @"主线程读取（拒绝阻塞，已排队）：   %d\n"
-            @"成功投放替代直链：                %d\n",
+            @"成功投放替代直链：                %d\n"
+            @"替换过程抛出异常（已吞掉）：      %lu 次\n",
             [[UNMConfig shared].providerOrder componentsJoinedByString:@","],
             UNMCountRead(UNMHookCtrPrivStatus),
             UNMCountRead(UNMHookCtrPrivFee),
@@ -998,17 +1133,68 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
             UNMCountRead(UNMHookCtrUrlEmpty),
             UNMCountRead(UNMHookCtrGenericUrlGet),
             UNMCountRead(UNMHookCtrMainThreadSkip),
-            UNMCountRead(UNMHookCtrUrlDelivered)];
+            UNMCountRead(UNMHookCtrUrlDelivered),
+            (unsigned long)UNMExceptionCount()];
 }
 
 // MARK: - Substitute URL
 
 + (NSString *)substituteURLForUrlInfo:(id)urlInfo {
+    // Never let an exception escape into UIKit.
+    //
+    // These hooks sit between the client and its own model objects. An exception
+    // raised here -- a missing KVC key on a class this tweak does not know, say --
+    // propagates into whatever the client was doing, and a view controller that
+    // throws while building its list gets dismissed. That is what a page vanishing
+    // a second after opening looks like. Swallowing it costs one substitution;
+    // letting it through costs the screen.
+    @try {
+        return [self unsafeSubstituteURLForUrlInfo:urlInfo];
+    } @catch (NSException *exception) {
+        UNMCountException();
+        UNMLogW(@"[model] 替换过程抛出异常：%@ — %@", exception.name, exception.reason);
+        return nil;
+    }
+}
+
++ (NSString *)unsafeSubstituteURLForUrlInfo:(id)urlInfo {
     NSString *songId = UNMSongIdOfObject(urlInfo);
+
+    // Not every client's URL holder carries a song id.
+    //
+    // On the iPad HD build the privilege class kept its name (so un-greying works)
+    // but the object the player asks for a URL either is not NMSongUrlInfo or does
+    // not expose the id -- and with no id there is nothing to look up, so every
+    // attempt fails. The player always reads the song model first, so fall back to
+    // the song it just asked about, within a short window.
+    if (songId.length == 0 || songId.longLongValue == 0) {
+        long long recent = UNMRecentAskedSongID();
+        if (recent != 0) {
+            songId = [NSString stringWithFormat:@"%lld", recent];
+            UNMLogD(@"[model] %@ 无 songId，改用最近询问的 %lld",
+                    NSStringFromClass([urlInfo class]), recent);
+        }
+    }
     if (songId.length == 0) return nil;
 
     long long value = songId.longLongValue;
     if (value == 0) return nil;
+
+    // Only replace what is actually unplayable.
+    //
+    // The URL this object holds is empty for *every* song the first time it is
+    // read, including songs NetEase can serve itself and songs sitting in the
+    // user's cloud drive. Substituting at that moment hijacked both: licensed
+    // tracks came back as a substitute (often a different artist's version) and
+    // cloud-drive uploads were replaced by a streaming copy. So if the client
+    // itself reported the song as playable, leave it alone and let it fetch.
+    if ([UNMConfig shared].onlyReplaceGrey) {
+        NSNumber *playable = UNMOriginalPlayableForID(songId);
+        if (playable != nil && playable.boolValue) {
+            UNMLogD(@"[model] %lld 客户端自认可播，不替换", value);
+            return nil;
+        }
+    }
 
     // Songs the sources genuinely do not have. Remembered for the session so a
     // song with no match never costs a second lookup on every single read.

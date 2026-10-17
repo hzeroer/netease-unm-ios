@@ -30,6 +30,34 @@ NS_ASSUME_NONNULL_BEGIN
 /// cleared the bar.
 + (BOOL)isFamilyCompatible:(UNMCandidate *)candidate withTarget:(UNMSongMeta *)meta;
 
+/// How close the titles are, 0...1, independent of artist and duration.
+///
+/// Needed because the relaxed fallback threshold looks at the *total* score, and a
+/// candidate by the same artist with an unrelated title still reaches 0.34 (0.34 is
+/// exactly the artist weight). That is how 小幸运 came back as 一二三 -- same singer,
+/// different song. Relaxing may forgive a spelling difference, never a different song.
++ (double)titleSimilarity:(UNMCandidate *)candidate withTarget:(UNMSongMeta *)meta;
+
+/// Every acceptable candidate, best first.
+///
+/// A source often carries the same song several times -- one entry that needs a
+/// purchase and another that does not. Trying only the top match means a paid entry
+/// hides a free one behind it, which is exactly what happens with 《小幸运》 on KuGou.
++ (NSArray<UNMCandidate *> *)rankedCandidates:(NSArray<UNMCandidate *> *)candidates
+                                    forTarget:(UNMSongMeta *)meta
+                                    threshold:(double)threshold;
+
+/// The same list, but willing to accept a different kind of recording.
+///
+/// Used only as a last resort, after every same-family candidate has failed to
+/// produce a URL. BoDian is a case in point: the studio take of 《晴天》 is a paid
+/// entry while the live take is free, so refusing variants outright would mean
+/// playing nothing at all. A live version is worse than the studio one and far
+/// better than silence, but only when silence is the alternative.
++ (NSArray<UNMCandidate *> *)relaxedCandidates:(NSArray<UNMCandidate *> *)candidates
+                                     forTarget:(UNMSongMeta *)meta
+                                     threshold:(double)threshold;
+
 /// Best candidate above the configured threshold, or nil.
 + (UNMCandidate * _Nullable)best:(NSArray<UNMCandidate *> *)candidates
                        forTarget:(UNMSongMeta *)meta

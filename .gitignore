@@ -7,7 +7,7 @@ build/
 *.a
 *.dSYM/
 
-# deb 打包中间目录
+# deb 打包中间目录（pack.sh 会把二进制复制到这里）
 layout/Library/MobileSubstrate/DynamicLibraries/*.dylib
 
 # 编辑器 / 系统
@@ -17,6 +17,7 @@ Thumbs.db
 .idea/
 *.swp
 
-# 日志
+# 日志与运行时数据（不要把设备信息提交上去）
 *.log
 unmios.log
+*/unmios/

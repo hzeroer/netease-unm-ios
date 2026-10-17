@@ -1,7 +1,8 @@
 {
     Filter = {
         Bundles = (
-            "com.netease.cloudmusic"
+            "com.netease.cloudmusic",
+            "com.netease.cloudmusicHD"
         );
     };
 }

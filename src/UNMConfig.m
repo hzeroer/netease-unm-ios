@@ -52,7 +52,7 @@
 
 - (void)applyDefaults {
     _enabled = YES;
-    _providerOrder = @[ @"migu", @"kuwo" ];
+    _providerOrder = @[ @"bodian", @"migu" ];
     _providerCookies = @{};
     _rewritePlayerURL = YES;
     _rewriteDownloadURL = YES;
@@ -77,6 +77,8 @@
     _forceUnblock = YES;
     _urlWaitMS = 2500;
     _rejectVariants = YES;
+    _bodianDevid = @"88637305104";
+    _onlyReplaceGrey = YES;
 }
 
 #pragma mark - Load
@@ -141,19 +143,26 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
     if (d[@"enabled"]) _enabled = UNMBool(d, @"enabled", YES);
     _providerOrder = UNMStrArray(d, @"providerOrder", _providerOrder);
 
-    // MiGu goes first, and is present even if the stored config left it out.
+    // MiGu and KuGou come first, and are present even if the stored config names
+    // neither.
     //
-    // It is the source that actually carries the studio recordings (verified: 稻香
-    // from 魔杰座 resolves there as an 8.5 MB file), while KuWo was observed handing
-    // back the *same* file for two different songs and serving Chinese-named files
-    // that turn out to be something other than the requested track. A stored order
-    // written by an older build -- or by hand, with MiGu switched off -- would
-    // otherwise leave KuWo as the only source, which is exactly what was happening.
+    // MiGu carries the studio recordings of NetEase's licensed-but-region-locked
+    // catalogue (verified: 稻香 from 魔杰座 resolves there as an 8.5 MB file).
+    // KuGou carries what MiGu does not -- 华研's catalogue, 田馥甄《小幸运》 among
+    // them -- and needs no cookie, only an MD5 over the track hash.
+    //
+    // A stored order written by an older build would otherwise leave KuGou out
+    // entirely, and the provider would never be asked at all.
     {
-        NSMutableArray<NSString *> *reordered = [_providerOrder mutableCopy] ?: [NSMutableArray array];
-        [reordered removeObject:@"migu"];
-        [reordered insertObject:@"migu" atIndex:0];
-        _providerOrder = reordered;
+        NSMutableArray<NSString *> *ordered = [NSMutableArray array];
+        for (NSString *key in @[ @"bodian", @"migu" ]) [ordered addObject:key];
+
+        for (NSString *key in _providerOrder) {
+            if (![key isKindOfClass:NSString.class]) continue;
+            if ([ordered containsObject:key]) continue;
+            [ordered addObject:key];
+        }
+        _providerOrder = ordered;
     }
     NSDictionary *cookies = UNMAsDict(d[@"providerCookies"]);
     if (cookies.count) {
@@ -186,6 +195,8 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
     _forceUnblock = UNMBool(d, @"forceUnblock", _forceUnblock);
     if (d[@"urlWaitMS"]) _urlWaitMS = UNMInt(d, @"urlWaitMS", _urlWaitMS);
     _rejectVariants = UNMBool(d, @"rejectVariants", _rejectVariants);
+    _bodianDevid = UNMStr(d, @"bodianDevid", _bodianDevid);
+    _onlyReplaceGrey = UNMBool(d, @"onlyReplaceGrey", _onlyReplaceGrey);
     _showNavBarEntry = UNMBool(d, @"showNavBarEntry", _showNavBarEntry);
 
     UNMLogSetLevel((UNMLogLevel)_logLevel);
@@ -265,7 +276,7 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
 
     NSDictionary *tpl = @{
         @"enabled"               : @YES,
-        @"providerOrder"         : @[ @"migu", @"kuwo" ],
+        @"providerOrder"         : @[ @"bodian", @"migu" ],
         @"providerCookies"       : @{},
         @"rewritePlayerURL"      : @YES,
         @"rewriteDownloadURL"    : @YES,
@@ -289,6 +300,8 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
         @"forceUnblock"          : @YES,
         @"urlWaitMS"            : @2500,
         @"rejectVariants"       : @YES,
+        @"bodianDevid"          : @"88637305104",
+        @"onlyReplaceGrey"      : @YES,
         @"enableShakeMenu"       : @YES,
         @"showNavBarEntry"       : @NO,
     };
@@ -318,6 +331,7 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
     [s appendFormat:@" forceUnblock=%d", self.forceUnblock];
     [s appendFormat:@" urlWait=%ldms", (long)self.urlWaitMS];
     [s appendFormat:@" rejectVariants=%d", self.rejectVariants];
+    [s appendFormat:@" onlyReplaceGrey=%d", self.onlyReplaceGrey];
     [s appendFormat:@" from=%@", self.loadedFrom ?: @"<defaults>"];
     return s;
 }
