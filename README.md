@@ -186,6 +186,66 @@ devid: 随机生成       -> code 20018 没有解锁付费歌曲
 就判定不可播，换下一档。
 
 ---
+---
+
+## 收藏（歌单路线）
+
+客户端对下架歌曲的收藏是拦在前面的：点红心只会弹「版权方要求该资源无法操作」，**不会发任何请求**
+（`/eapi/song/like` 从头到尾没出现过一次）。所以插件不去碰那个按钮，改走另一条路——
+**把歌加进一个歌单**。
+
+服务端对「加进歌单」的校验和「红心」不同：它只看你有没有这个歌单的写权限，不看这首歌能不能播。
+于是同一首歌，红心失败，加进歌单成功。
+
+菜单里只有一行：
+
+```
+收藏
+  选择歌单并收藏…
+```
+
+点开列出你自己的歌单（订阅来的会被过滤掉，写不进去），**选中的那一刻就完成收藏**，
+不需要再点第二次。当前目标后面带 `✓`：
+
+```
+我喜欢的音乐（默认）✓
+周杰伦全集（42 首）
+测试歌单（3 首）
+```
+
+选择记在 `unmios.plist` 的 `favoritePlaylistId`；清空它就是回到「我喜欢的音乐」。
+
+用的是明文接口，和 App 自己的 Cookie：
+
+```
+GET  /api/nuser/account/get          → userId
+GET  /api/user/playlist?uid=…        → 找 specialType==5
+POST /api/playlist/manipulate/tracks → op=add&pid=…&trackIds=["id","id"]
+```
+
+`trackIds` 是**同样的 id 写两遍**——这是那个接口的实际约定，写一遍不生效。
+
+当前歌曲靠 hook `NMSong -setPlayUrlInfo:` 记录，所以换源播放的歌也能正确收藏。
+
+---
+
+## 听歌排行：做不到，原因不在插件
+
+正常歌曲播完会进排行，**周杰伦这些下架歌不会**——这件事查到最后是服务端的规则，不是请求写得对不对。
+
+排查过程留下的结论：
+
+| 观察到的事实 | 说明 |
+|---|---|
+| 客户端**确实**为换源歌曲上报了播放（`id` 正确） | 上报通道是通的 |
+| 但载荷里 `time:0`、`end:"ui"` | 客户端把这次播放当作「被切走的中断」 |
+| 我们按完整字段重发 `end:"playend", time:200` | 服务端收下（`code 200`），仍不计入 |
+| 换成排行榜真正的数据源 `api/feedback/weblog` | 同上 |
+
+结论：**服务端按「这首歌对你是否可播」过滤播放记录**，跟上报字段无关。这跟收藏那次是同一类限制，
+区别是收藏有绕路（歌单），排行没有。
+
+所以 v3.2.0 把相关代码整段删掉了——菜单里不再挂一个永远点不出结果的功能。
 
 ## 几个值得记录的坑
 
@@ -296,8 +356,9 @@ export ARCHS="arm64"
 | 第一次点某首歌可能要再点一次 | 播放器主线程同步取地址，而我们不能让主线程等 |
 | 依赖 App 内部类名 | 网易云大版本更新后可能需要重新适配，见上文「版本敏感」 |
 | 只在 iOS 16.6 / 网易云 8.9.20 / arm64 上实测过 | 其他组合未验证 |
-| 只有咪咕一个源 | 咪咕没有的曲目就没有替代源 |
+| 有些歌没有替代源 | 波点和咪咕都没有对应录音时就换不了，例如冷门翻唱 |
 | 无法给分享面板加「同步微信状态」 | 该选项只在客户端整体离线时出现，插件伪造不了系统级断网 |
+| 下架歌不进听歌排行 | 服务端按「是否可播」过滤播放记录，与上报内容无关，见上文 |
 
 ---
 
@@ -330,6 +391,7 @@ src/
   UNMMatcher.h/.m    打分与版本家族判定
   UNMProvider*.m     音源（bodian 主用，migu 备用）
   UNMValidate.h/.m   候选链接探测（拒绝"假直链"）
+  UNMFavorite.h/.m   收藏：歌单路线（绕开 song/like）+ 歌单选择
   UNMURLProtocol.m   拦截层（当前主要用于观测；本客户端用不上响应改写）
   UNMMenu.h/.m       悬浮球 / 摇一摇 / 面板 / 诊断
   UNMRuntimeDump.m   运行时导出 App 自有类结构（适配新版本时用）
@@ -360,14 +422,14 @@ src/
 ## 版本
 
 ```
-dist/UNMiOS.dylib    504,016 bytes  arm64  Mach-O dylib v2.8.5
+dist/UNMiOS.dylib    613,968 bytes  arm64  Mach-O dylib v3.2.0
 dist/UNMiOS.deb      120,344 bytes
-sha256  c2b8990e0f86e0b6e893e9ca70dab1369a2f99ac153938664f7760bd6d9612a0
+sha256  bda801c5af7175dd73be5b7ebb793ee8e7e7bfc7a3316ba679ff8d394168c8c9
 作者：hzeroer      包名：com.hzeroer.unmios
 只链接系统库：Foundation / UIKit / CoreGraphics / CoreFoundation / libobjc / libSystem
 substrate 引用数：0    未定义符号：0    -Wall 警告数：0    __interpose 段：0
 ```
 
 > 署名同时出现在：面板「状态 → 版本」行、启动日志
-> （`UNMiOS 2.8.5 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
+> （`UNMiOS 3.2.0 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
 > `Author` / `Maintainer` 字段（装包时在 Sileo/Zebra 里可见）、以及 `LICENSE` 的版权行。

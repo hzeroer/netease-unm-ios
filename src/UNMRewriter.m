@@ -362,6 +362,14 @@ static NSUInteger UNMLiberatePrivilegeNode(id node) {
     if (changed) *changed = NO;
     if (detail) *detail = nil;
     if (!body.length) return body;
+    // Read-only diagnostics: the verification query and the upload endpoint must come back
+    // byte-for-byte, otherwise the plugin's own check sees data it rewrote itself.
+    NSString *readOnlyPath = request.URL.path ?: @"";
+    if ([readOnlyPath containsString:@"v1/play/record"] ||
+        [readOnlyPath containsString:@"/clientlog/"]) {
+        return body;
+    }
+
 
     // Answered before endpoint resolution: /api/song/play/about/block/page is not one of the
     // endpoints this layer knows about, and it is the call that decides whether the client

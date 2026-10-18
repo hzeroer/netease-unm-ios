@@ -79,6 +79,14 @@
     _rejectVariants = YES;
     _bodianDevid = @"";
     _onlyReplaceGrey = YES;
+    // Off by default: the client never issues the play-URL request for a substituted song, so
+    // waiting for it only costs two extra reads per song and changes nothing. Kept as a switch
+    // because it is the right behaviour for any song the client does ask about.
+    _responseFirst = NO;
+    // On: the experiment proved the client never asks for a play URL on its own, so the
+    // model layer is the only injection point iOS offers.
+    _injectModelURL = YES;
+    _favoritePlaylistId = @"";
 }
 
 #pragma mark - Load
@@ -197,6 +205,9 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
     _rejectVariants = UNMBool(d, @"rejectVariants", _rejectVariants);
     _bodianDevid = UNMStr(d, @"bodianDevid", _bodianDevid);
     _onlyReplaceGrey = UNMBool(d, @"onlyReplaceGrey", _onlyReplaceGrey);
+    _responseFirst = UNMBool(d, @"responseFirst", _responseFirst);
+    _injectModelURL = UNMBool(d, @"injectModelURL", _injectModelURL);
+    _favoritePlaylistId = UNMStr(d, @"favoritePlaylistId", _favoritePlaylistId);
     _showNavBarEntry = UNMBool(d, @"showNavBarEntry", _showNavBarEntry);
 
     UNMLogSetLevel((UNMLogLevel)_logLevel);
@@ -302,6 +313,9 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
         @"rejectVariants"       : @YES,
         @"bodianDevid"          : @"",
         @"onlyReplaceGrey"      : @YES,
+        @"responseFirst"        : @NO,
+        @"injectModelURL"       : @YES,
+        @"favoritePlaylistId"    : @"",
         @"enableShakeMenu"       : @YES,
         @"showNavBarEntry"       : @NO,
     };
@@ -332,6 +346,8 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
     [s appendFormat:@" urlWait=%ldms", (long)self.urlWaitMS];
     [s appendFormat:@" rejectVariants=%d", self.rejectVariants];
     [s appendFormat:@" onlyReplaceGrey=%d", self.onlyReplaceGrey];
+    [s appendFormat:@" responseFirst=%d", self.responseFirst];
+    [s appendFormat:@" injectModelURL=%d", self.injectModelURL];
     [s appendFormat:@" from=%@", self.loadedFrom ?: @"<defaults>"];
     return s;
 }

@@ -3,6 +3,7 @@
 //
 
 #import "UNMModelHook.h"
+#import "UNMFavorite.h"
 #import "UNMConfig.h"
 #import "UNMHook.h"
 #import "UNMLog.h"
@@ -98,7 +99,7 @@ static BOOL UNMModelHookEnabled(void) {
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     if (now - lastCheck > 1.0) {
         UNMConfig *cfg = [UNMConfig shared];
-        cached = cfg.enabled && cfg.forceUnblock;
+        cached = cfg.enabled && cfg.forceUnblock && cfg.injectModelURL;
         lastCheck = now;
     }
     return cached;
@@ -697,6 +698,21 @@ static id UNMHooked_SongPlayUrlInfo(id self_, SEL _cmd) {
     }
 }
 
+
+static IMP gOrig_SongSetPlayUrlInfo = NULL;
+static void UNMHooked_SongSetPlayUrlInfo(id self_, SEL _cmd, id info) {
+    NSString *songId = UNMSongIdOfObject(self_);
+    if (songId.length) {
+        NSString *name = nil;
+        @try { name = [self_ valueForKey:@"name"]; } @catch (__unused NSException *e) { }
+        [UNMFavorite rememberSongId:[songId longLongValue] name:name];
+        UNMLogI(@"[fav] 当前歌曲：%@《%@》", songId, name ?: @"?");
+    }
+    if (gOrig_SongSetPlayUrlInfo) {
+        ((void (*)(id, SEL, id))gOrig_SongSetPlayUrlInfo)(self_, _cmd, info);
+    }
+}
+
 // MARK: - NMSongUrlInfo
 
 static IMP gOrig_UrlGet = NULL;
@@ -712,6 +728,20 @@ static NSString *UNMHooked_UrlGet(id self_, SEL _cmd) {
     // Never touch a URL that already works: only the grey case is substituted.
     if (original.length) return original;
     UNMCountHook(UNMHookCtrUrlEmpty);
+
+    // Let the client ask the server first.
+    //
+    // Answering the very first read made the client skip /song/enhance/player/url entirely:
+    // no request, no response, and its play-log payload stayed {} -- which is why the
+    // listening ranking never counted a substituted song. Returning nil here sends it to the
+    // server, where the response rewriter supplies the substitute URL instead.
+    if ([UNMConfig shared].responseFirst && songId.length) {
+        NSInteger asks = UNMNoteAsk(songId);
+        if (asks <= 2) {
+            UNMLogI(@"[resp] 先让客户端自己请求 %@（第 %ld 次读空）", songId, (long)asks);
+            return original;
+        }
+    }
     if (songId.length) {
         UNMLastEnsure();
         [gLastLock lock];
@@ -898,6 +928,7 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
 /// mentions "url" -- the same conservative rule used above, applied broadly.
 /// Catch the toast that refuses the action, and print who decided it.
 
+
 + (void)installDiscoveredURLGetters:(NSMutableArray<NSString *> *)report {
     int capacity = objc_getClassList(NULL, 0);
     if (capacity <= 0) return;
@@ -1027,6 +1058,8 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
         UNMHookModel(@"NMSong", @"privilege", (IMP)UNMHooked_SongPrivilege, &gOrig_SongPrivilege, report);
         UNMHookModel(@"NMSong", @"playUrlInfo", (IMP)UNMHooked_SongPlayUrlInfo, &gOrig_SongPlayUrlInfo, report);
         UNMHookModel(@"NMSong", @"songFile", (IMP)UNMHooked_SongSongFile, &gOrig_SongSongFile, report);
+        UNMHookModel(@"NMSong", @"setPlayUrlInfo:", (IMP)UNMHooked_SongSetPlayUrlInfo,
+                     &gOrig_SongSetPlayUrlInfo, report);
 
         // ---- NMSongUrlInfo: the delivery point for a substitute URL
         UNMHookModel(@"NMSongUrlInfo", @"url", (IMP)UNMHooked_UrlGet, &gOrig_UrlGet, report);
@@ -1066,6 +1099,9 @@ static BOOL UNMHookModel(NSString *clsName, NSString *selName, IMP newIMP,
         // still not enough.
         [self forceLicensingFlagsOnClassName:@"NMSong" report:report];
         [self forceLicensingFlagsOnClassName:@"NMSongPrivilege" report:report];
+        // Only in discovery mode: walking the class list at launch forces classes to realise,
+        // and a class whose +initialize has side effects takes the process down with it.
+
 
         UNMLogI(@"[model] 模型层 hook 安装完成");
         for (NSString *line in report) UNMLogI(@"[model]   %@", line);

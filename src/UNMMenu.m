@@ -7,6 +7,7 @@
 #import <UIKit/UIKit.h>
 
 #import "UNMConfig.h"
+#import "UNMFavorite.h"
 #import "UNMCrashGuard.h"
 #import "UNMDiagnose.h"
 #import "UNMHook.h"
@@ -326,6 +327,96 @@ typedef NS_ENUM(NSInteger, UNMRowKind) {
     }
     status.footer = @"拦截数为 0 说明请求根本没进来，先看「诊断」。";
     [sections addObject:status];
+
+    // -------- 收藏（歌单路线）
+    UNMSection *fav = [UNMSection new];
+    fav.title = @"收藏";
+    {
+        UNMRow *row = [UNMRow new];
+        row.kind = UNMRowAction;
+        row.title = @"选择歌单并收藏…";
+        {
+            NSString *configured = [UNMConfig shared].favoritePlaylistId;
+            row.detail = configured.length
+                ? [NSString stringWithFormat:@"选中即收藏，当前 pid=%@", configured]
+                : @"选中即收藏，当前「我喜欢的音乐」";
+        }
+        row.action = ^(UIViewController *host) {
+            [UNMFavorite loadEditablePlaylistsWithCompletion:^(NSArray<NSDictionary *> *items, NSString *report) {
+                if (items.count == 0) {
+                    UIAlertController *alert = [UIAlertController
+                        alertControllerWithTitle:@"没有可写歌单"
+                                         message:report
+                                  preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+                    [host presentViewController:alert animated:YES completion:nil];
+                    return;
+                }
+
+                UIAlertController *sheet = [UIAlertController
+                    alertControllerWithTitle:@"收藏到哪个歌单"
+                                     message:report
+                              preferredStyle:UIAlertControllerStyleActionSheet];
+
+                NSString *defaultTitle = [UNMConfig shared].favoritePlaylistId.length
+                    ? @"我喜欢的音乐（默认）" : @"我喜欢的音乐（默认）✓";
+                [sheet addAction:[UIAlertAction actionWithTitle:defaultTitle
+                                                         style:UIAlertActionStyleDefault
+                                                       handler:^(UIAlertAction *a) {
+                    [[UNMConfig shared] persistValue:nil forKey:@"favoritePlaylistId"];
+                    [UNMFavorite favoriteCurrentSongWithCompletion:^(BOOL ok, NSString *r) {
+                        UIAlertController *done = [UIAlertController
+                            alertControllerWithTitle:(ok ? @"已收藏到「我喜欢的音乐」" : @"收藏失败")
+                                             message:r
+                                      preferredStyle:UIAlertControllerStyleAlert];
+                        [done addAction:[UIAlertAction actionWithTitle:@"好"
+                                                                style:UIAlertActionStyleDefault
+                                                              handler:nil]];
+                        [host presentViewController:done animated:YES completion:nil];
+                    }];
+                }]];
+
+                for (NSDictionary *item in items) {
+                    BOOL isCurrent = [[UNMConfig shared].favoritePlaylistId isEqualToString:item[@"id"]];
+                    NSString *title = [NSString stringWithFormat:@"%@（%ld 首）%@",
+                                        item[@"name"], (long)[item[@"count"] integerValue],
+                                        isCurrent ? @"✓" : @""];
+                    [sheet addAction:[UIAlertAction actionWithTitle:title
+                                                             style:UIAlertActionStyleDefault
+                                                           handler:^(UIAlertAction *a) {
+                        [[UNMConfig shared] persistValue:item[@"id"] forKey:@"favoritePlaylistId"];
+                        [UNMFavorite favoriteCurrentSongWithCompletion:^(BOOL ok, NSString *r) {
+                            NSString *headline = ok
+                                ? [NSString stringWithFormat:@"已收藏到「%@」", item[@"name"]]
+                                : @"收藏失败";
+                            UIAlertController *done = [UIAlertController
+                                alertControllerWithTitle:headline
+                                                 message:r
+                                          preferredStyle:UIAlertControllerStyleAlert];
+                            [done addAction:[UIAlertAction actionWithTitle:@"好"
+                                                                    style:UIAlertActionStyleDefault
+                                                                  handler:nil]];
+                            [host presentViewController:done animated:YES completion:nil];
+                        }];
+                    }]];
+                }
+
+                [sheet addAction:[UIAlertAction actionWithTitle:@"取消"
+                                                         style:UIAlertActionStyleCancel
+                                                       handler:nil]];
+
+                // iPad needs an anchor or presenting throws.
+                sheet.popoverPresentationController.sourceView = host.view;
+                sheet.popoverPresentationController.sourceRect =
+                    CGRectMake(CGRectGetMidX(host.view.bounds), CGRectGetMidY(host.view.bounds), 1, 1);
+                [host presentViewController:sheet animated:YES completion:nil];
+            }];
+        };
+        [fav.rows addObject:row];
+    }
+
+    [sections addObject:fav];
+
 
     // -------- 自检
     UNMSection *test = [UNMSection new];

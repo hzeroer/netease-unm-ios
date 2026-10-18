@@ -72,6 +72,8 @@ static NSURLSessionConfiguration *UNMEnsureProtocolInConfiguration(NSURLSessionC
 // stack dies -- which is exactly what took the host app down once already.
 
 static IMP gOrigSetProtocolClasses = NULL;
+static void UNMNoteDecision(NSString *path, BOOL accepted);
+
 static IMP gOrigSessionWithConfigurationOnly = NULL;
 static IMP gOrigSessionWithConfiguration = NULL;
 static IMP gOrigInitWithConfiguration = NULL;
@@ -154,6 +156,7 @@ static void UNMNoteSessionTask(NSURLRequest *request) {
     if (isNew) {
         UNMLogI(@"[session] 首次看到 %@ %@%@", request.HTTPMethod, url.host, url.path);
     }
+
 }
 
 /// Rewrite a completion-handler task's response in place. Returns the data to
@@ -567,6 +570,27 @@ void UNMInstallInterceptor(void) {
 
 @implementation UNMURLProtocol
 
+/// Log an interception decision once per (path, verdict) pair.
+///
+/// The rewrite machinery has been in place for a while and never fired, which could mean
+/// either "the client never asks us" or "we decline every time". One line per distinct path
+/// separates those two cases without a flood.
+static void UNMNoteDecision(NSString *path, BOOL accepted) {
+    static NSMutableSet<NSString *> *seen = nil;
+    static NSLock *lock = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        seen = [NSMutableSet set];
+        lock = [[NSLock alloc] init];
+    });
+    NSString *key = [NSString stringWithFormat:@"%@|%@", accepted ? @"Y" : @"N", path];
+    [lock lock];
+    BOOL isNew = ![seen containsObject:key];
+    if (isNew) [seen addObject:key];
+    [lock unlock];
+    if (isNew) UNMLogI(@"[resp] canInit %@ → %@", path, accepted ? @"接管" : @"放行");
+}
+
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
     if ([NSURLProtocol propertyForKey:UNMUpstreamKey inRequest:request]) return NO;
 
@@ -618,7 +642,9 @@ void UNMInstallInterceptor(void) {
         UNMLogD(@"intercept %@ %@ [%@]", request.HTTPMethod, url.path, UNMEndpointName(endpoint));
     }
 
-    return UNMEndpointIsRewritable(endpoint) || UNMEndpointIsIngestable(endpoint);
+    BOOL accept = UNMEndpointIsRewritable(endpoint) || UNMEndpointIsIngestable(endpoint);
+    UNMNoteDecision(url.path, accept);
+    return accept;
 }
 
 + (NSURLRequest *)canonicalRequestForRequest:(NSURLRequest *)request {

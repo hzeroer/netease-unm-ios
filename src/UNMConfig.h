@@ -84,6 +84,24 @@ NS_ASSUME_NONNULL_BEGIN
 /// there also hijacked licensed tracks and cloud-drive uploads. Defaults to on.
 @property (nonatomic, readonly) BOOL onlyReplaceGrey;
 
+/// Let the client fetch the play URL itself before the model layer answers for it.
+///
+/// Answering the very first read meant the client never issued /song/enhance/player/url at
+/// all, so its own play-log payload stayed an empty dictionary and the listening ranking never
+/// counted the play. With this on, the first read returns nil, the client asks, and the
+/// response rewriter supplies the substitute URL.
+@property (nonatomic, readonly) BOOL responseFirst;
+
+/// Whether the model layer may answer a play-URL read with a substitute.
+///
+/// Turning this off is an experiment, not a user option: it is the only way to find out whether
+/// the client issues /song/enhance/player/url at all when nothing pre-answers it. Playback of
+/// substituted songs stops while it is off.
+@property (nonatomic, readonly) BOOL injectModelURL;
+
+/// Playlist the favourite action adds to. Empty means "我喜欢的音乐" (specialType 5).
+@property (nonatomic, copy, readonly) NSString *favoritePlaylistId;
+
 /// Where the config was actually loaded from (nil when defaults are in use).
 @property (nonatomic, readonly, copy, nullable) NSString *loadedFrom;
 /// Where a template config was written / should be edited.
