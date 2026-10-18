@@ -401,7 +401,7 @@ static void TestConfigDefaults(void) {
     CHECK(cfg.totalTimeoutMS >= cfg.lookupTimeoutMS, @"total budget >= per-source budget", nil);
     CHECK(!cfg.discoveryMode, @"discovery off by default", nil);
     CHECK(cfg.neteaseDetailFallback, @"NetEase detail fallback on", nil);
-    CHECK_EQ_NUM((double)cfg.providerCookies.count, 0.0, @"no baked-in cookies", nil);
+    CHECK_EQ_NUM((double)cfg.providerCookies.count, 0.0, @"no baked-in cookies");
 }
 
 int main(void) {
