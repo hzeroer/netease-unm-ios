@@ -37,7 +37,10 @@ jobs:
         run: |
           set -e
           export IOS_SDK="$HOME/sdks/iPhoneOS16.5.sdk"
-          export ARCHS="arm64 arm64e"
+          # arm64 only: an injected dylib is loaded by a userland app, which is arm64.
+          # arm64e exists for system daemons, and a universal slice here only adds a way for
+          # TrollFools to report "no code signature found" on a binary that is otherwise fine.
+          export ARCHS="arm64"
           chmod +x tools/*.sh
           ./tools/build-dylib.sh
           ./tools/pack.sh
