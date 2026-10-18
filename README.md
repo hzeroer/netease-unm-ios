@@ -437,9 +437,9 @@ src/
 
 ```
 Release 产物（CI 编译，arm64 only）
-  UNMiOS.dylib    525,088 bytes
-  UNMiOS.deb      126,300 bytes
-  sha256  fafe8d6a0996c50fed3ef3cfcab332f3d9f6fd16b998a9618b69cc5c5465700d
+  UNMiOS.dylib    523,728 bytes
+  UNMiOS.deb      124,112 bytes
+  sha256  ff1dad20765ce910eb7b64ed347e879014cf20172ebac3cd202de806b4325039
 
 本地全架构构建（含调试符号，体积更大）
   dist/UNMiOS.dylib    609,808 bytes
