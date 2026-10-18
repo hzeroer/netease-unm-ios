@@ -36,6 +36,8 @@ SOURCES=(
     "$ROOT/src/UNMLog.m"
     "$ROOT/src/UNMConfig.m"
     "$ROOT/src/UNMInternal.m"
+    "$ROOT/src/UNMStats.m"
+    "$ROOT/src/UNMProvider.m"
     "$ROOT/src/UNMMatcher.m"
     "$ROOT/src/UNMRewriter.m"
     "$ROOT/src/UNMBodianSign.m"
