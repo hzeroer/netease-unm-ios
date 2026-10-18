@@ -37,6 +37,12 @@ jobs:
           git sparse-checkout set iPhoneOS16.5.sdk
           du -sh iPhoneOS16.5.sdk
 
+      - name: Install dpkg
+        run: |
+          # pack.sh skips the .deb silently when dpkg-deb is absent, which is how the
+          # deb artifact quietly disappeared from CI while the dylib kept uploading.
+          brew install dpkg
+
       - name: Build
         run: |
           set -e
