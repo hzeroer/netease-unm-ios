@@ -9,10 +9,7 @@ jobs:
   test:
     name: Unit tests (host)
     runs-on: macos-14
-    # Eight assertions in test/unm_test.m still describe the V2.2.1 behaviour (provider order,
-    # threshold semantics, onlyReplaceGrey, and the pre-refactor rewriter). They are tracked as
-    # debt, not as a build blocker: a red test job must not stop the dylib from being produced.
-    continue-on-error: true
+
     steps:
       - uses: actions/checkout@v4
 
