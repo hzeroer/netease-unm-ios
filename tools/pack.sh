@@ -84,4 +84,23 @@ ls -l "$DIST"
 # "no code signature found" -- an error that says nothing about the real cause.
 rm -f "$DIST"/UNMiOS-*.dylib
 
-sha256sum UNMiOS.dylib > SHA256SUMS 2>/dev/null && cat SHA256SUMS ) || true
+# sha256sum is GNU coreutils and absent on macOS, where the redirect created an empty
+# SHA256SUMS before the command failed -- CI then tried to upload a 0-byte asset.
+# Try each tool in turn and only write the file once a digest was actually produced.
+digest=""
+if command -v sha256sum >/dev/null 2>&1; then
+    digest="$(sha256sum UNMiOS.dylib 2>/dev/null)"
+elif command -v shasum >/dev/null 2>&1; then
+    digest="$(shasum -a 256 UNMiOS.dylib 2>/dev/null)"
+elif command -v openssl >/dev/null 2>&1; then
+    raw="$(openssl dgst -sha256 UNMiOS.dylib 2>/dev/null | awk '{print $NF}')"
+    [ -n "$raw" ] && digest="$raw  UNMiOS.dylib"
+fi
+
+if [ -n "$digest" ]; then
+    printf '%s\n' "$digest" > SHA256SUMS
+    cat SHA256SUMS
+else
+    rm -f SHA256SUMS
+    echo "warn: no sha256 tool available, skipped SHA256SUMS" >&2
+fi )

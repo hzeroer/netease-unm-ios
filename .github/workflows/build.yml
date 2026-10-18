@@ -102,4 +102,13 @@ jobs:
               --title "UNMiOS $TAG" \
               --notes-file RELEASE_NOTES.md
           fi
-          gh release upload "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          # An empty file makes the upload endpoint answer 400 Bad Content-Length, so only
+          # non-empty artefacts are attached.
+          shopt -s nullglob
+          files=()
+          for f in assets/*; do [ -s "$f" ] && files+=("$f"); done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "no non-empty artefacts to upload" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
