@@ -422,9 +422,15 @@ src/
 ## 版本
 
 ```
-dist/UNMiOS.dylib    613,968 bytes  arm64  Mach-O dylib v3.2.0
-dist/UNMiOS.deb      120,344 bytes
-sha256  bda801c5af7175dd73be5b7ebb793ee8e7e7bfc7a3316ba679ff8d394168c8c9
+Release 产物（CI 编译，arm64 only）
+  UNMiOS.dylib    525,088 bytes
+  UNMiOS.deb      126,300 bytes
+  sha256  fafe8d6a0996c50fed3ef3cfcab332f3d9f6fd16b998a9618b69cc5c5465700d
+
+本地全架构构建（含调试符号，体积更大）
+  dist/UNMiOS.dylib    613,968 bytes
+  sha256  bda801c5af7175dd73be5b7ebb793ee8e7e7bfc7a3316ba679ff8d394168c8c9
+
 作者：hzeroer      包名：com.hzeroer.unmios
 只链接系统库：Foundation / UIKit / CoreGraphics / CoreFoundation / libobjc / libSystem
 substrate 引用数：0    未定义符号：0    -Wall 警告数：0    __interpose 段：0
