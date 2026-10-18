@@ -28,60 +28,12 @@
 #import "UNMLog.h"
 #import "UNMUtil.h"
 
-#import <CommonCrypto/CommonDigest.h>
-
-static NSString *UNMBodianMD5(NSString *input) {
-    if (input.length == 0) return @"";
-    unsigned char digest[CC_MD5_DIGEST_LENGTH] = {0};
-    NSData *data = [input dataUsingEncoding:NSUTF8StringEncoding];
-    CC_MD5(data.bytes, (CC_LONG)data.length, digest);
-
-    NSMutableString *hex = [NSMutableString stringWithCapacity:CC_MD5_DIGEST_LENGTH * 2];
-    for (int i = 0; i < CC_MD5_DIGEST_LENGTH; i++) [hex appendFormat:@"%02x", digest[i]];
-    return hex;
-}
+#import "UNMBodianSign.h"
 
 static NSString *UNMBodianString(id value) {
     if ([value isKindOfClass:NSString.class]) return value;
     if ([value isKindOfClass:NSNumber.class]) return [value stringValue];
     return @"";
-}
-
-/// Append the KuWo signature to a request URL.
-static NSString *UNMBodianSign(NSString *rawURL) {
-    if (rawURL.length == 0) return rawURL;
-
-    long long millis = (long long)(CFAbsoluteTimeGetCurrent() * 1000.0);
-    // Wall-clock milliseconds, not uptime: the service compares them with its own.
-    millis = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
-
-    NSString *signed_ = [rawURL stringByAppendingFormat:@"&timestamp=%lld", millis];
-
-    NSRange question = [signed_ rangeOfString:@"?"];
-    if (question.location == NSNotFound) return signed_;
-    NSString *query = [signed_ substringFromIndex:NSMaxRange(question)];
-
-    NSMutableString *filtered = [NSMutableString stringWithCapacity:query.length];
-    for (NSUInteger i = 0; i < query.length; i++) {
-        unichar c = [query characterAtIndex:i];
-        BOOL keep = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-        if (keep) [filtered appendFormat:@"%C", c];
-    }
-
-    NSMutableArray<NSNumber *> *codes = [NSMutableArray arrayWithCapacity:filtered.length];
-    for (NSUInteger i = 0; i < filtered.length; i++) {
-        [codes addObject:@([filtered characterAtIndex:i])];
-    }
-    [codes sortUsingSelector:@selector(compare:)];
-
-    NSMutableString *sorted = [NSMutableString stringWithCapacity:codes.count];
-    for (NSNumber *code in codes) [sorted appendFormat:@"%C", (unichar)code.unsignedShortValue];
-
-    NSURL *parsed = [NSURL URLWithString:rawURL];
-    NSString *path = parsed.path ?: @"";
-
-    NSString *payload = [NSString stringWithFormat:@"kuwotest%@%@", sorted, path];
-    return [signed_ stringByAppendingFormat:@"&sign=%@", UNMBodianMD5(payload)];
 }
 
 @interface UNMProviderBodian : NSObject <UNMProvider>
@@ -267,7 +219,7 @@ static NSString *UNMBodianDeviceID = nil;
     NSString *base = [NSString stringWithFormat:
         @"http://bd-api.kuwo.cn/api/play/music/v2/audioUrl?&br=320kmp3&musicId=%@",
         candidate.mediaId];
-    NSString *url = UNMBodianSign(base);
+    NSString *url = UNMBodianSignedURL(base);
 
     UNMHTTPResult *result = [UNMHTTP GET:url headers:[self clientHeaders]
                                  timeout:MIN(timeout, 7.0)];
@@ -285,7 +237,7 @@ static NSString *UNMBodianDeviceID = nil;
         [[self class] rotateDeviceID];
         [self requestUnlockOnce];
 
-        url = UNMBodianSign(base);
+        url = UNMBodianSignedURL(base);
         result = [UNMHTTP GET:url headers:[self clientHeaders] timeout:MIN(timeout, 7.0)];
         json = result.json;
         code = [json[@"code"] integerValue];
