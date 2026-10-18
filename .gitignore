@@ -22,5 +22,3 @@ Thumbs.db
 unmios.log
 */unmios/
 
-# workflow needs a token with the workflow scope
-.github/
