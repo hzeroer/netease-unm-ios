@@ -59,7 +59,6 @@ __attribute__((used)) const char *UNMiOSVersionMarker = "UNMiOS_VERSION=" UNM_VE
 // Declared here rather than in a shared header: nothing else needs to know the
 // concrete classes, they are reached through the registry.
 @interface UNMProviderMigu : NSObject <UNMProvider> @end
-@interface UNMProviderKugou : NSObject <UNMProvider> @end
 @interface UNMProviderBodian : NSObject <UNMProvider> @end
 
 #pragma mark - Discovery helpers
@@ -254,7 +253,6 @@ static void UNMRegisterProvidersOnce(void) {
     static dispatch_once_t once;
     dispatch_once(&once, ^{
         UNMRegisterProvider([UNMProviderMigu class]);
-        UNMRegisterProvider([UNMProviderKugou class]);
         UNMRegisterProvider([UNMProviderBodian class]);
         UNMLogI(@"sources: %@", [UNMRegisteredProviderKeys() componentsJoinedByString:@","]);
     });

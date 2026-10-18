@@ -116,7 +116,21 @@ URL 路径里的 `20261017043804` 是服务器时间戳，和请求时刻**逐�
 
 ## 音源
 
-当前只支持 **咪咕（MiGu）**。
+默认 **波点主用、咪咕备用**。配置项 `providers` 决定顺序，出厂值是 `bodian,migu`。
+
+波点曲库更全、匹配更准，正常情况下先走它；波点没取到（下架、限流、`20018`）才落到咪咕。
+
+### 波点（主用，酷我镜像）
+
+```
+搜索  https://search.kuwo.cn/r.s?all=<关键词>&ft=music&itemset=web_2013&client=kt&pn=0&rn=20
+取链  https://bd-api.kuwo.cn/api/play/music/v2/audioUrl
+签名  md5("kuwotest" + 查询串去符号后按字符排序 + 路径)
+```
+
+**付费曲也能取**，原理见下面「波点为什么能放付费曲」一节。
+
+### 咪咕（备用）
 
 ```
 搜索  https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/search_all.do?text=<关键词>&…
@@ -129,7 +143,7 @@ URL 路径里的 `20261017043804` 是服务器时间戳，和请求时刻**逐�
 
 **匿名可用**，不需要 cookie。按 SQ（无损）→ HQ（320k）→ PQ（128k）依次降级。
 
-### 为什么只留这一个
+### 为什么是这两个
 
 开发过程中接过多家，实测结果：
 
@@ -166,7 +180,7 @@ devid: 随机生成       -> code 20018 没有解锁付费歌曲
 - **请求头**（`accept` / `accept-language` / `devid` / `plat` …）不是门槛。
 - **码率**不影响：15 档全试，付费曲一律 20018。
 
-以上除波点、咪咕外**代码已全部删除**。
+以上除波点、咪咕外**代码已全部删除**（酷狗的实现文件也删掉了，不再参与编译）。
 
 ### 想加回别的源
 
@@ -428,8 +442,8 @@ Release 产物（CI 编译，arm64 only）
   sha256  fafe8d6a0996c50fed3ef3cfcab332f3d9f6fd16b998a9618b69cc5c5465700d
 
 本地全架构构建（含调试符号，体积更大）
-  dist/UNMiOS.dylib    613,968 bytes
-  sha256  bda801c5af7175dd73be5b7ebb793ee8e7e7bfc7a3316ba679ff8d394168c8c9
+  dist/UNMiOS.dylib    609,808 bytes
+  sha256  4c3ef592a5fb14df440bc60afc8a324970cc0c800e23b45c1267161ebf0dfe6e
 
 作者：hzeroer      包名：com.hzeroer.unmios
 只链接系统库：Foundation / UIKit / CoreGraphics / CoreFoundation / libobjc / libSystem
@@ -437,5 +451,5 @@ substrate 引用数：0    未定义符号：0    -Wall 警告数：0    __inter
 ```
 
 > 署名同时出现在：面板「状态 → 版本」行、启动日志
-> （`UNMiOS 3.2.0 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
+> （`UNMiOS 3.2.1 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
 > `Author` / `Maintainer` 字段（装包时在 Sileo/Zebra 里可见）、以及 `LICENSE` 的版权行。

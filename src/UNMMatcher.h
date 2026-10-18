@@ -42,7 +42,7 @@ NS_ASSUME_NONNULL_BEGIN
 ///
 /// A source often carries the same song several times -- one entry that needs a
 /// purchase and another that does not. Trying only the top match means a paid entry
-/// hides a free one behind it, which is exactly what happens with 《小幸运》 on KuGou.
+/// hides a free one behind it -- so every candidate above the threshold is tried.
 + (NSArray<UNMCandidate *> *)rankedCandidates:(NSArray<UNMCandidate *> *)candidates
                                     forTarget:(UNMSongMeta *)meta
                                     threshold:(double)threshold;

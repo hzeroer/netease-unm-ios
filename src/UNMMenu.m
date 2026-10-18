@@ -480,18 +480,16 @@ typedef NS_ENUM(NSInteger, UNMRowKind) {
     // -------- 音源
     UNMSection *providers = [UNMSection new];
     providers.title = @"音源";
-    // Only two sources, both kept visible so it is obvious what is being tried.
     //
-    // MiGu first: it has the studio recordings. KuGou second: it has what MiGu
-    // does not (华研's catalogue) and needs no cookie.
+    // Bodian first: KuWo mirror, widest catalogue, paid tracks included.
+    // MiGu second: studio recordings of the region-locked licensed catalogue.
     for (NSString *key in @[ @"bodian", @"migu" ]) {
         UNMRow *row = [UNMRow new];
         row.kind = UNMRowSwitch;
         row.key = [@"provider." stringByAppendingString:key];
         row.title = key;
         row.detail = @{ @"migu"  : @"咪咕（匿名可用，含无损）",
-                        @"bodian" : @"波点（酷我镜像，免 cookie）",
-                        @"kugou" : @"酷狗（免 cookie，覆盖华研等）" }[key];
+                        @"bodian" : @"波点（酷我镜像，免 cookie）" }[key];
         [providers.rows addObject:row];
     }
     providers.footer = @"按顺序尝试：波点 → 咪咕。两者都不限速、不需要账号。";
@@ -758,7 +756,7 @@ typedef NS_ENUM(NSInteger, UNMRowKind) {
             [order removeObject:provider];
         }
         // Keep a canonical order so the search order stays predictable.
-        NSArray *canonical = @[ @"kuwo", @"bodian", @"kugou", @"migu" ];
+        NSArray *canonical = @[ @"bodian", @"migu" ];
         NSMutableArray *sorted = [NSMutableArray array];
         for (NSString *k in canonical) if ([order containsObject:k]) [sorted addObject:k];
         [cfg persistValue:sorted forKey:@"providerOrder"];
@@ -840,8 +838,8 @@ typedef NS_ENUM(NSInteger, UNMRowKind) {
     if (row.kind != UNMRowInput) return;
     __weak typeof(self) weakSelf = self;
 
-    if ([row.key isEqualToString:@"miguCookie"] || [row.key isEqualToString:@"kugouCookie"]) {
-        NSString *provider = [row.key isEqualToString:@"miguCookie"] ? @"migu" : @"kugou";
+    if ([row.key isEqualToString:@"miguCookie"]) {
+        NSString *provider = @"migu";
         NSString *current = [UNMConfig shared].providerCookies[provider] ?: @"";
         UNMAlertInput(self, [NSString stringWithFormat:@"%@ cookie", provider],
                       @"粘贴抓包得到的 Cookie 整行；留空则清除", current,

@@ -15,8 +15,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, readonly) BOOL enabled;
 @property (nonatomic, readonly, copy) NSArray<NSString *> *providerOrder;
-/// Optional per-source cookies, e.g. {"migu": "session=...", "kugou": "kg_mid=..."}.
-/// MiGu and KuGou only hand out URLs to logged-in callers, so these are how
+/// Optional per-source cookies, e.g. {"migu": "session=..."}.
+/// Some sources only hand out URLs to logged-in callers, so these are how
 /// those two sources are made usable without shipping any hard-coded account.
 @property (nonatomic, readonly, copy) NSDictionary<NSString *, NSString *> *providerCookies;
 @property (nonatomic, readonly) BOOL rewritePlayerURL;

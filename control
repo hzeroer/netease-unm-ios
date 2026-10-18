@@ -1,6 +1,6 @@
 Package: com.hzeroer.unmios
 Name: UNMiOS 网易云解灰
-Version: 3.2.0
+Version: 3.2.1
 Architecture: iphoneos-arm64
 Description: 进程内解灰：直接 hook 网易云客户端的取链接口，用波点/咪咕换源，
  重写 player/url、download/url、privilege 以及列表响应里内嵌的 privileges。

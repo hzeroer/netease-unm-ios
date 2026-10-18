@@ -151,16 +151,15 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
     if (d[@"enabled"]) _enabled = UNMBool(d, @"enabled", YES);
     _providerOrder = UNMStrArray(d, @"providerOrder", _providerOrder);
 
-    // MiGu and KuGou come first, and are present even if the stored config names
-    // neither.
+    // Bodian and MiGu always come first, even if the stored config names neither.
     //
+    // Bodian is a KuWo mirror: widest catalogue of the two, and it hands out paid
+    // tracks once its devid is unlocked (see UNMProviderBodian).
     // MiGu carries the studio recordings of NetEase's licensed-but-region-locked
     // catalogue (verified: 稻香 from 魔杰座 resolves there as an 8.5 MB file).
-    // KuGou carries what MiGu does not -- 华研's catalogue, 田馥甄《小幸运》 among
-    // them -- and needs no cookie, only an MD5 over the track hash.
     //
-    // A stored order written by an older build would otherwise leave KuGou out
-    // entirely, and the provider would never be asked at all.
+    // A stored order written by an older build would otherwise leave one of them out
+    // entirely, and that provider would never be asked at all.
     {
         NSMutableArray<NSString *> *ordered = [NSMutableArray array];
         for (NSString *key in @[ @"bodian", @"migu" ]) [ordered addObject:key];

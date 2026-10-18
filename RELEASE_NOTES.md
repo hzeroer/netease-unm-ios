@@ -1,3 +1,55 @@
+# UNMiOS V3.2.1
+
+只修文档与一处名不副实的代码：**音源其实一直是波点主力、咪咕备用**，但 README 的开头还写着「当前只支持咪咕」。
+
+## 文档纠正
+
+`## 音源` 整节重写：
+
+- 开头明确「默认 **波点主用、咪咕备用**，`providers` 出厂值 `bodian,migu`」
+- 波点单列一节（搜索 `search.kuwo.cn/r.s`、取链 `bd-api.kuwo.cn`、签名算法），并说明曲库更全
+- 咪咕保留为备用，两个 id（`contentId` / `copyrightId`）都必须给这一点保留
+- 原「为什么只留这一个」→「为什么是这两个」，表格内容不变
+
+## 酷狗：说删了其实还在
+
+上一版 README 写「除波点、咪咕外代码已全部删除」，但 `UNMProviderKugou.m` 一直参与编译、
+启动日志里也一直打印 `sources: migu,kugou,bodian`——只是不在默认顺序里，属于**注册了但从不被调用**的死代码。
+
+这一版真的删了：
+
+| 位置 | 处理 |
+|---|---|
+| `src/UNMProviderKugou.m` | 文件删除 |
+| `src/UNMiOS.m` | 取消前置声明与 `UNMRegisterProvider` 调用 |
+| `src/UNMMenu.m` | 去掉音源标签、canonical 顺序、cookie 输入入口 |
+| `UNMConfig.h/.m`、`UNMProvider.h`、`UNMMatcher.h` | 过时注释纠正 |
+
+验证：
+
+```
+$ strings dist/UNMiOS.dylib | grep -E "^(bodian|migu|kugou|kuwo)$" | sort -u
+bodian
+migu
+$ strings dist/UNMiOS.dylib | grep -ci kugou
+0
+```
+
+## 体积
+
+```
+609,808 bytes   arm64  Mach-O dylib
+sha256  4c3ef592a5fb14df440bc60afc8a324970cc0c800e23b45c1267161ebf0dfe6e
+```
+
+比 V3.2.0 少 4 KB（整个酷狗模块）。
+
+## 功能
+
+与 V3.2.0 完全一致：换源播放（波点主用 / 咪咕备用）、收藏（歌单路线，选择即收藏）。
+听歌排行的结论也不变——服务端按下架状态过滤，插件做不到。
+
+---
 # UNMiOS V3.2.0
 
 这一版只做一件事：**把收藏做成了真的能用**。听歌排行那一整块删掉了。
