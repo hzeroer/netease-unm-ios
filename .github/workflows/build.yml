@@ -51,6 +51,13 @@ jobs:
           export ARCHS="arm64"
           chmod +x tools/*.sh
           ./tools/build-dylib.sh
+
+          # The WSL build signs with ldid; the macOS runner has neither ldid nor a signing
+          # identity, so the artefact shipped unsigned. Ad-hoc signing gives it the same
+          # LC_CODE_SIGNATURE the tested local build has.
+          codesign --force --sign - --timestamp=none dist/UNMiOS.dylib
+          codesign -dvv dist/UNMiOS.dylib 2>&1 | head -4 || true
+
           ./tools/pack.sh
 
       - name: Upload dylib
