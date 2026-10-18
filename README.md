@@ -1,6 +1,6 @@
 # UNMiOS — 网易云音乐 iOS 解灰插件（巨魔注入版）
 
-作者：**hzeroer**　·　iPhone 15 Pro / iOS 16.6 / 网易云 8.9.20 实测可用
+作者：**hzeroer**　·　iPhone 14 Pro Max / iOS 16.6 / 网易云 8.9.20 实测可用
 
 把变灰的歌换掉音源。**不需要外部服务器、不需要 CA 证书、不需要代理、不需要抓包。**
 
@@ -31,7 +31,7 @@
 
 | 项 | 值 |
 |---|---|
-| 设备 | iPhone 15 Pro（`iPhone15,3`，A16） |
+| 设备 | iPhone 14 Pro Max（`iPhone15,3`，A16） |
 | 系统 | **iOS 16.6（20G75）** |
 | 客户端 | **网易云音乐 8.9.20（build 3440）** |
 | 注入方式 | TrollFools（未越狱，巨魔） |
@@ -153,7 +153,11 @@ devid: 88637305104   -> code 200   拿到地址
 devid: 随机生成       -> code 20018 没有解锁付费歌曲
 ```
 
-那个设备号曾经看过一次解锁广告，服务端就永久记住了它。所以插件里写死了一个已解锁的 `devid`（配置项 `bodianDevid`），失效时换一个即可。
+那个设备号一旦被服务端记成"已解锁"，**同一个号就一直有效，但有效期只有约 30 分钟**——过了窗口，同一个号会开始回 `20018`。
+
+所以插件现在的做法是：**每次启动随机生成一个 11 位 `devid`**，服务端回 `20018` 时立刻换号重试一次。配置项 `bodianDevid` 留空即走这个策略，填了则钉住指定号码（调试用）。
+
+> 早期版本把 `88637305104` 写死在代码里，这是付费曲一段时间后全部失效的原因。
 
 顺带排掉的几个错误方向，免得有人重走：
 
@@ -356,14 +360,14 @@ src/
 ## 版本
 
 ```
-dist/UNMiOS.dylib    589,536 bytes  arm64  Mach-O dylib v2.8.3
-dist/UNMiOS.deb      150,468 bytes
-sha256  bde58b84bb7419caaba212c876efe7f68a8725864c6a0c6d267c35ab3018c8f0
+dist/UNMiOS.dylib    504,016 bytes  arm64  Mach-O dylib v2.8.5
+dist/UNMiOS.deb      120,344 bytes
+sha256  c2b8990e0f86e0b6e893e9ca70dab1369a2f99ac153938664f7760bd6d9612a0
 作者：hzeroer      包名：com.hzeroer.unmios
 只链接系统库：Foundation / UIKit / CoreGraphics / CoreFoundation / libobjc / libSystem
 substrate 引用数：0    未定义符号：0    -Wall 警告数：0    __interpose 段：0
 ```
 
 > 署名同时出现在：面板「状态 → 版本」行、启动日志
-> （`UNMiOS 2.8.3 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
+> （`UNMiOS 2.8.5 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
 > `Author` / `Maintainer` 字段（装包时在 Sileo/Zebra 里可见）、以及 `LICENSE` 的版权行。
