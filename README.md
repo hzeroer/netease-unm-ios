@@ -356,14 +356,14 @@ src/
 ## 版本
 
 ```
-dist/UNMiOS.dylib    570,624 bytes  arm64  Mach-O dylib v2.6.2
+dist/UNMiOS.dylib    589,536 bytes  arm64  Mach-O dylib v2.8.3
 dist/UNMiOS.deb      150,468 bytes
-sha256  b514375e83a4d2f09e17b464e51e0a8c3ab51f221f98fa0ebf725225e0fcd575
+sha256  bde58b84bb7419caaba212c876efe7f68a8725864c6a0c6d267c35ab3018c8f0
 作者：hzeroer      包名：com.hzeroer.unmios
 只链接系统库：Foundation / UIKit / CoreGraphics / CoreFoundation / libobjc / libSystem
 substrate 引用数：0    未定义符号：0    -Wall 警告数：0    __interpose 段：0
 ```
 
 > 署名同时出现在：面板「状态 → 版本」行、启动日志
-> （`UNMiOS 2.6.2 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
+> （`UNMiOS 2.8.3 by hzeroer loaded into com.netease.cloudmusic`）、`control` 的
 > `Author` / `Maintainer` 字段（装包时在 Sileo/Zebra 里可见）、以及 `LICENSE` 的版权行。

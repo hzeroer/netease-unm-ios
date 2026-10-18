@@ -1,3 +1,4 @@
+#import <objc/runtime.h>
 //
 //  UNMUtil.m
 //
@@ -356,4 +357,35 @@ NSDictionary *UNMAsDict(id v) {
 
 NSArray *UNMAsArray(id v) {
     return [v isKindOfClass:NSArray.class] ? (NSArray *)v : nil;
+}
+
+void UNMSetIvar(id object, NSString *name, id value) {
+    if (object == nil || name.length == 0) return;
+    Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
+    if (ivar == NULL) return;
+    object_setIvar(object, ivar, value);
+}
+
+void UNMSetIvarLongLong(id object, NSString *name, long long value) {
+    if (object == nil || name.length == 0) return;
+    Ivar ivar = class_getInstanceVariable([object class], name.UTF8String);
+    if (ivar == NULL) return;
+    const char *encoding = ivar_getTypeEncoding(ivar);
+    if (encoding == NULL) return;
+
+    // Only touch integer-typed ivars; anything else would corrupt the object.
+    if (encoding[0] != 'q' && encoding[0] != 'Q' && encoding[0] != 'l' &&
+        encoding[0] != 'L' && encoding[0] != 'i' && encoding[0] != 'I') {
+        return;
+    }
+    ptrdiff_t offset = ivar_getOffset(ivar);
+    uint8_t *base = (uint8_t *)(__bridge void *)object;
+    switch (encoding[0]) {
+        case 'q': *(int64_t *)(base + offset) = (int64_t)value; break;
+        case 'Q': *(uint64_t *)(base + offset) = (uint64_t)value; break;
+        case 'l': *(long *)(base + offset) = (long)value; break;
+        case 'L': *(unsigned long *)(base + offset) = (unsigned long)value; break;
+        case 'i': *(int32_t *)(base + offset) = (int32_t)value; break;
+        case 'I': *(uint32_t *)(base + offset) = (uint32_t)value; break;
+    }
 }

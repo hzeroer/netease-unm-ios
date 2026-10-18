@@ -224,9 +224,129 @@ static NSArray *UNMResetChargeInfo(void) {
     if (!body.length) return;
     id json = UNMJSONParse(body);
     if (!json) return;
+
+    // The favourite and play-report calls are the two things this project cannot see
+    // any other way: if the client never sends them the UI is gated, and if it sends
+    // them and gets an error the reason is in the body. Either answer ends the guessing.
+    NSString *path = request.URL.path ?: @"";
+    if ([path containsString:@"like"] || [path containsString:@"play/record"] ||
+        [path containsString:@"scrobble"]) {
+        NSDictionary *answer = UNMAsDict(json);
+        UNMLogI(@"[收藏/上报] %@ %@ → code=%@ %@", request.HTTPMethod, path,
+                answer[@"code"] ?: @"?",
+                answer[@"message"] ?: answer[@"msg"] ?: @"");
+    }
+
     [[UNMStore shared] ingestJSON:json];
 }
 
+/// Remove the server-side block verdict from a response.
+///
+/// Tapping the heart on a grey track produces 《版权方要求该资源无法操作》 and no request
+/// at all, and the text is not on the model: it arrives in the answer to
+/// /api/song/play/about/block/page. The client asks "may this be played or collected?",
+/// stores the verdict, and refuses every action on the song while it holds one.
+///
+/// The payload shape is not documented, so instead of naming one key this walks the whole
+/// document and defuses every block marker it can recognise: text that carries the verdict
+/// becomes empty, and any numeric flag whose key talks about blocking becomes 0. The song
+/// then looks playable, which is already true of its audio, so the heart works.
+static BOOL UNMSanitizeBlockNode(id node);
+
+static BOOL UNMSanitizeBlockDictionary(NSMutableDictionary *dict) {
+    BOOL touched = NO;
+    for (NSString *key in dict.allKeys) {
+        id value = dict[key];
+        NSString *lower = key.lowercaseString;
+
+        BOOL isFlagKey = [lower containsString:@"block"] || [lower containsString:@"ban"] ||
+                         [lower containsString:@"forbid"] || [lower containsString:@"restrict"] ||
+                         [lower containsString:@"limit"] || [lower containsString:@"grey"] ||
+                         [lower containsString:@"gray"] || [lower containsString:@"copyright"];
+
+        if ([value isKindOfClass:NSNumber.class] && isFlagKey) {
+            dict[key] = @(0);
+            touched = YES;
+            continue;
+        }
+        if ([value isKindOfClass:NSString.class]) {
+            NSString *text = value;
+            if ([text containsString:@"版权"] || [text containsString:@"无法"] ||
+                [text containsString:@"不可"] || [text containsString:@"受限"] ||
+                [text containsString:@"下架"]) {
+                dict[key] = @"";
+                touched = YES;
+                continue;
+            }
+        }
+        if (UNMSanitizeBlockNode(value)) touched = YES;
+    }
+    return touched;
+}
+
+static BOOL UNMSanitizeBlockNode(id node) {
+    if ([node isKindOfClass:NSMutableDictionary.class]) {
+        return UNMSanitizeBlockDictionary(node);
+    }
+    if ([node isKindOfClass:NSMutableArray.class]) {
+        BOOL touched = NO;
+        for (id child in node) {
+            if (UNMSanitizeBlockNode(child)) touched = YES;
+        }
+        return touched;
+    }
+    return NO;
+}
+
+
+/// Rewrite the licensing verdict inside the JSON itself.
+///
+/// Every model-level hook is in place and the heart still refuses, which means the gate is
+/// reading the payload rather than the object graph: the verdict arrives in the song-detail
+/// and privilege responses as numbers (st/fee/payed/flag/cp/pl/dl/maxbr) and is stored before
+/// any model is built. Normalising those numbers is the only place left that is upstream of
+/// every consumer, so it is done here for the endpoints that carry them.
+static NSUInteger UNMLiberatePrivilegeNode(id node) {
+    if ([node isKindOfClass:NSMutableArray.class]) {
+        NSUInteger total = 0;
+        for (id child in node) total += UNMLiberatePrivilegeNode(child);
+        return total;
+    }
+    if (![node isKindOfClass:NSMutableDictionary.class]) return 0;
+
+    NSMutableDictionary *dict = node;
+    NSUInteger total = 0;
+
+    BOOL hasIdentity = dict[@"id"] || dict[@"songId"] || dict[@"musicId"] || dict[@"resourceId"];
+    BOOL hasVerdict = dict[@"st"] || dict[@"status"] || dict[@"fee"] ||
+                      dict[@"payed"] || dict[@"flag"] || dict[@"cp"];
+
+    if (hasIdentity && hasVerdict) {
+        if (dict[@"st"]) dict[@"st"] = @(0);
+        if (dict[@"status"]) dict[@"status"] = @(200);
+        if (dict[@"fee"]) dict[@"fee"] = @(0);
+        if (dict[@"payed"]) dict[@"payed"] = @(1);
+        if (dict[@"flag"]) dict[@"flag"] = @(0);
+        if (dict[@"cp"]) dict[@"cp"] = @(1);
+        if (dict[@"subp"]) dict[@"subp"] = @(1);
+        if (dict[@"downloadMaxbr"]) dict[@"downloadMaxbr"] = @(320000);
+        if (dict[@"playMaxbr"]) dict[@"playMaxbr"] = @(320000);
+        if (dict[@"maxbr"]) dict[@"maxbr"] = @(320000);
+        if (dict[@"fl"]) dict[@"fl"] = @(320000);
+        if (dict[@"pl"]) dict[@"pl"] = @(320000);
+        if (dict[@"dl"]) dict[@"dl"] = @(320000);
+        // The client prints this string when it refuses an action.
+        for (NSString *key in dict.allKeys) {
+            if ([key.lowercaseString containsString:@"copyright"]) {
+                dict[key] = @"";
+            }
+        }
+        total += 1;
+    }
+
+    for (id child in dict.allValues) total += UNMLiberatePrivilegeNode(child);
+    return total;
+}
 + (NSData *)processBody:(NSData *)body
              forRequest:(NSURLRequest *)request
                 changed:(BOOL *)changed
@@ -243,11 +363,61 @@ static NSArray *UNMResetChargeInfo(void) {
     if (detail) *detail = nil;
     if (!body.length) return body;
 
+    // Answered before endpoint resolution: /api/song/play/about/block/page is not one of the
+    // endpoints this layer knows about, and it is the call that decides whether the client
+    // lets the user collect or play the song at all.
+    NSString *blockPath = request.URL.path ?: @"";
+    if ([blockPath containsString:@"about/block"] || [blockPath containsString:@"play/block"]) {
+        id blocked = UNMParseMutable(body);
+        if (blocked) {
+            BOOL touched = UNMSanitizeBlockNode(blocked);
+            NSData *clean = [NSJSONSerialization dataWithJSONObject:blocked options:0 error:NULL];
+            if (clean) {
+                UNMLogI(@"[block] %@ %lu → %lu 字节（%@）", blockPath,
+                        (unsigned long)body.length, (unsigned long)clean.length,
+                        touched ? @"已清除屏蔽" : @"无屏蔽标记");
+                NSString *peek = [blocked description];
+                if (peek.length > 700) peek = [[peek substringToIndex:700] stringByAppendingString:@"…"];
+                UNMLogI(@"[block] 原文：%@", peek);
+                if (touched) {
+                    if (changed) *changed = YES;
+                    if (detail) *detail = @"block-page cleared";
+                    return clean;
+                }
+            }
+        }
+        return body;
+    }
+
     UNMConfig *cfg = [UNMConfig shared];
     [cfg reload];
     if (!cfg.enabled) return body;
 
     NSURL *url = request.URL;
+    // Licensing verdicts travel as plain numbers in the song payloads; rewrite them before
+    // anything builds a model from them.
+    {
+        NSString *p = request.URL.path ?: @"";
+        if ([p containsString:@"song/detail"] || [p containsString:@"privilege"] ||
+            [p containsString:@"playlist/detail"] || [p containsString:@"album/"] ||
+            [p containsString:@"song/enhance"] || [p containsString:@"v3/song"] ||
+            [p containsString:@"v6/playlist"] || [p containsString:@"song/url"]) {
+            id payload = UNMParseMutable(body);
+            if (payload) {
+                NSUInteger freed = UNMLiberatePrivilegeNode(payload);
+                if (freed) {
+                    NSData *out = [NSJSONSerialization dataWithJSONObject:payload options:0 error:NULL];
+                    if (out) {
+                        UNMLogI(@"[license] %@ 放行 %lu 条", p, (unsigned long)freed);
+                        if (changed) *changed = YES;
+                        if (detail) *detail = @"privilege liberated";
+                        body = out;
+                    }
+                }
+            }
+        }
+    }
+
     UNMEndpoint endpoint = UNMEndpointForPath(url.path);
     if (endpoint == UNMEndpointNone) return body;
 

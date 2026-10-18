@@ -93,6 +93,31 @@ static NSString *UNMBodianSign(NSString *rawURL) {
     return @"bodian";
 }
 
+/// The device id, and the only thing KuWo uses to decide whether a track is unlocked.
+///
+/// A pinned id goes stale within the hour, so this behaves like the reference client:
+/// a new id per launch, plus one more whenever the service says "not unlocked".
+static NSString *UNMBodianDeviceID = nil;
+
++ (NSString *)deviceID {
+    NSString *pinned = [UNMConfig shared].bodianDevid;
+    if (pinned.length > 0) return pinned;
+
+    if (UNMBodianDeviceID == nil) {
+        // arc4random_uniform takes a uint32, so 90 billion does not fit; build the
+        // 11-digit id from two draws instead of truncating the range.
+        unsigned long long value = 10000000000ULL
+                                 + ((unsigned long long)arc4random_uniform(90000) * 1000000ULL)
+                                 + (unsigned long long)arc4random_uniform(1000000);
+        UNMBodianDeviceID = [NSString stringWithFormat:@"%llu", value];
+    }
+    return UNMBodianDeviceID;
+}
+
++ (void)rotateDeviceID {
+    UNMBodianDeviceID = nil;
+}
+
 - (NSDictionary<NSString *, NSString *> *)clientHeaders {
     // The device id is the whole authorisation.
     //
@@ -104,9 +129,14 @@ static NSString *UNMBodianSign(NSString *rawURL) {
     //     88637305104 -> 稻香 / 青花瓷 / 七里香 / 小幸运   all 200
     //     random id   -> 20018 for every one of them
     //
-    // Read from the config so a replacement can be pasted in without a rebuild.
-    NSString *deviceID = [UNMConfig shared].bodianDevid;
-    if (deviceID.length == 0) deviceID = @"88637305104";
+    // A fresh id per process, the way the reference client behaves.
+    //
+    // KuWo grants the paid-track unlock to a device id for a limited window and then
+    // forgets it: an id that answered 200 at 22:55 answered 20018 by 23:15. The
+    // reference client therefore generates a new id on every launch and re-runs the
+    // advert call with it, which is why it keeps working while a pinned id goes stale.
+    // The config value, when set, wins -- handy for pinning a known good id.
+    NSString *deviceID = [self.class deviceID];
 
     return @{
         @"Accept" : @"application/json, text/plain, */*",
@@ -133,6 +163,24 @@ static NSString *UNMBodianSign(NSString *rawURL) {
     UNMHTTPResult *result = [UNMHTTP GET:url
                                  headers:@{ @"User-Agent" : @"Mozilla/5.0" }
                                  timeout:MIN(timeout, 8.0)];
+
+    // KuWo throttles the search endpoint: prefetching a whole playlist fires dozens of
+    // requests within a second and some come back 403 with a 150-byte error page.
+    // Dropping that song is the wrong answer to a rate limit -- back off and ask again.
+    if (UNMAsDict(result.json) == nil &&
+        (result.status == 403 || result.status == 429)) {
+        for (NSInteger attempt = 1; attempt <= 2; attempt++) {
+            NSTimeInterval wait = 0.25 * attempt;
+            UNMLogI(@"[bodian] 搜索被限流（HTTP %ld），%.0fms 后重试第 %ld 次",
+                    (long)result.status, wait * 1000.0, (long)attempt);
+            [NSThread sleepForTimeInterval:wait];
+
+            result = [UNMHTTP GET:url
+                           headers:@{ @"User-Agent" : @"Mozilla/5.0" }
+                           timeout:MIN(timeout, 8.0)];
+            if (UNMAsDict(result.json) != nil) break;
+        }
+    }
 
     NSDictionary *root = UNMAsDict(result.json);
     if (root == nil) {
@@ -181,8 +229,40 @@ static NSString *UNMBodianSign(NSString *rawURL) {
     return candidates;
 }
 
+/// The advert call the reference client makes before asking for a paid track.
+///
+/// Its body comes back as `{"code":439,"sign invalid"}` -- the signature baked into
+/// the reference client is stale -- but the call still has to be made: the service
+/// grants the unlock to the device id that made it, not to a valid signature. Skip it
+/// and the id stays unauthorised, and audioUrl answers 20018.
+- (void)requestUnlockOnce {
+    // One advert call per device id. A rotated id has to make its own call, which is
+    // why this is keyed on the id rather than being a plain once-only flag.
+    static NSString *unlockedID = nil;
+    NSString *current = [self.class deviceID];
+    if ([unlockedID isEqualToString:current]) return;
+    unlockedID = current;
+
+    NSString *url = @"http://bd-api.kuwo.cn/api/service/advert/watch?uid=-1&token="
+                     "&timestamp=1724306124436&sign=15a676d66285117ad714e8c8371691da";
+    NSMutableDictionary *headers = [[self clientHeaders] mutableCopy];
+    headers[@"Content-Type"] = @"application/json; charset=utf-8";
+    headers[@"qimei36"] = @"1e9970cbcdc20a031dee9f37100017e1840e";
+
+    NSData *body = [@"{\"type\":5,\"subType\":5,\"musicId\":0,\"adToken\":\"\"}"
+                    dataUsingEncoding:NSUTF8StringEncoding];
+    UNMHTTPResult *result = [UNMHTTP POST:url
+                                     body:body
+                              contentType:@"application/json; charset=utf-8"
+                                  headers:headers
+                                  timeout:3.0];
+    UNMLogI(@"[bodian] 解锁请求 devid=%@ HTTP %ld", current, (long)result.status);
+}
+
 - (NSString *)resolveURL:(UNMCandidate *)candidate timeout:(NSTimeInterval)timeout {
     if (candidate.mediaId.length == 0) return nil;
+    [self requestUnlockOnce];
+
 
     NSString *base = [NSString stringWithFormat:
         @"http://bd-api.kuwo.cn/api/play/music/v2/audioUrl?&br=320kmp3&musicId=%@",
@@ -198,6 +278,23 @@ static NSString *UNMBodianSign(NSString *rawURL) {
     }
 
     NSInteger code = [json[@"code"] integerValue];
+    if (code == 20018) {
+        // "没有解锁付费歌曲": this device id has no grant, or its grant expired.
+        // Rotate to a fresh id, make its advert call, and ask once more -- that is
+        // exactly what the reference client does on every launch.
+        [[self class] rotateDeviceID];
+        [self requestUnlockOnce];
+
+        url = UNMBodianSign(base);
+        result = [UNMHTTP GET:url headers:[self clientHeaders] timeout:MIN(timeout, 7.0)];
+        json = result.json;
+        code = [json[@"code"] integerValue];
+        if (code != 200) {
+            UNMLogI(@"[bodian] rid=%@ 换设备号后仍 code=%ld %@", candidate.mediaId, (long)code,
+                    UNMBodianString(json[@"msg"]));
+            return nil;
+        }
+    }
     if (code != 200) {
         // 20018 is the paid-entry answer. Free entries for the same song exist under
         // other ids, which is what the caller's candidate retry is for.

@@ -42,4 +42,15 @@ FOUNDATION_EXPORT id _Nullable UNMDictGet(NSDictionary *d, NSArray<NSString *> *
 FOUNDATION_EXPORT NSDictionary * _Nullable UNMAsDict(id v);
 FOUNDATION_EXPORT NSArray * _Nullable UNMAsArray(id v);
 
+/// Write an instance variable directly, ignoring whether a setter exists.
+///
+/// The models the client hands around are not KVC-friendly for every field: some are
+/// plain ivars with no property. Objects this project synthesises have to look
+/// coherent to code that reads those ivars directly -- the play-record and favourite
+/// paths serialise the object rather than going through the getters that are hooked.
+FOUNDATION_EXPORT void UNMSetIvar(id object, NSString *name, id _Nullable value);
+
+/// Same, for the numeric fields these models keep as long long.
+FOUNDATION_EXPORT void UNMSetIvarLongLong(id object, NSString *name, long long value);
+
 NS_ASSUME_NONNULL_END

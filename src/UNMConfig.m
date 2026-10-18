@@ -77,7 +77,7 @@
     _forceUnblock = YES;
     _urlWaitMS = 2500;
     _rejectVariants = YES;
-    _bodianDevid = @"88637305104";
+    _bodianDevid = @"";
     _onlyReplaceGrey = YES;
 }
 
@@ -300,7 +300,7 @@ static NSArray<NSString *> *UNMStrArray(NSDictionary *d, NSString *k, NSArray *f
         @"forceUnblock"          : @YES,
         @"urlWaitMS"            : @2500,
         @"rejectVariants"       : @YES,
-        @"bodianDevid"          : @"88637305104",
+        @"bodianDevid"          : @"",
         @"onlyReplaceGrey"      : @YES,
         @"enableShakeMenu"       : @YES,
         @"showNavBarEntry"       : @NO,

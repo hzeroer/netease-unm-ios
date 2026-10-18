@@ -8,12 +8,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Bump on every build. A changed version is what makes the crash guard give a
 /// fixed build a clean slate instead of leaving it disabled forever.
-#define UNM_VERSION "2.6.2"
+#define UNM_VERSION "2.8.3"
 
 /// Shown in the panel and the startup banner.
 #define UNM_AUTHOR   "hzeroer"
 
-/// The tweak version, e.g. "2.6.2". Defined in UNMiOS.m.
+/// The tweak version, e.g. "2.8.3". Defined in UNMiOS.m.
 FOUNDATION_EXPORT const char *UNMVersionString(void);
 
 /// The author, shown in the panel footer and the startup banner.
